@@ -78,6 +78,10 @@ The dev server starts on <http://127.0.0.1:5173>.
 └─ .github/                  CI workflow, issue and pull request templates
 ```
 
+`src/assets/` is intentionally absent in v0.1: the application ships no binary assets of its own,
+so the favicon lives in `public/` and icons come from `@lucide/vue`. Create that directory when the
+project needs its own images or fonts, and document it here at the same time.
+
 Read [docs/architecture.md](docs/architecture.md) before changing anything below the view
 layer. The intended flow is **components → Pinia stores → services → repositories → Dexie**;
 business rules belong in services, and persistence details belong in repositories.

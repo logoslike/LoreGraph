@@ -5,7 +5,6 @@ import AppShell from '@/components/layout/AppShell.vue'
 import Inspector from '@/components/layout/Inspector.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import HelpDialog from '@/components/common/HelpDialog.vue'
-import CreateNodeDialog from '@/components/editor/CreateNodeDialog.vue'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useToast } from '@/composables/useToast'
 import { services } from '@/services'
@@ -24,7 +23,7 @@ const ui = useUiStore()
 const toast = useToast()
 
 const shellRef = ref<InstanceType<typeof AppShell> | null>(null)
-const createNodeOpen = ref(false)
+const graphCanvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 const ready = ref(false)
 
 function formatError(error: unknown): string {
@@ -61,6 +60,13 @@ watch(
   { immediate: true },
 )
 
+/** 侧栏按钮与 N 键统一走 GraphCanvas 暴露的对话框，落点由画布视口决定。 */
+function openCreateNode(): void {
+  if (ready.value) {
+    graphCanvasRef.value?.openCreateDialog()
+  }
+}
+
 async function deleteSelection(): Promise<void> {
   if (graph.selectedNodeId !== null) {
     await graph.deleteNode(graph.selectedNodeId)
@@ -73,9 +79,7 @@ async function deleteSelection(): Promise<void> {
 
 useShortcuts({
   onCreateNode: () => {
-    if (ready.value) {
-      createNodeOpen.value = true
-    }
+    openCreateNode()
   },
   onDeleteSelection: () => {
     if (ready.value) {
@@ -85,10 +89,6 @@ useShortcuts({
   onEscape: () => {
     if (ui.helpOpen) {
       ui.helpOpen = false
-      return
-    }
-    if (createNodeOpen.value) {
-      createNodeOpen.value = false
       return
     }
     graph.selectNode(null)
@@ -116,14 +116,13 @@ onBeforeUnmount(() => {
   <template v-else>
     <AppShell ref="shellRef">
       <template #sidebar>
-        <Sidebar @create-node="createNodeOpen = true" />
+        <Sidebar @create-node="openCreateNode" />
       </template>
-      <GraphCanvas />
+      <GraphCanvas ref="graphCanvasRef" />
       <template #inspector>
         <Inspector />
       </template>
     </AppShell>
-    <CreateNodeDialog v-model:open="createNodeOpen" />
     <HelpDialog :open="ui.helpOpen" @close="ui.helpOpen = false" />
   </template>
 </template>
