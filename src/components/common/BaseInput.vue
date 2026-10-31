@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false })
+
 withDefaults(
   defineProps<{
     modelValue: string
@@ -25,6 +27,7 @@ function onInput(event: Event): void {
   <label class="block">
     <span v-if="label" class="mb-1 block text-sm text-muted">{{ label }}</span>
     <input
+      v-bind="$attrs"
       :value="modelValue"
       :type="type"
       :placeholder="placeholder"

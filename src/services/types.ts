@@ -24,6 +24,8 @@ export interface UniverseService {
   create(input: UniverseCreateInput): Promise<Universe>
   update(id: string, patch: UniversePatch): Promise<Universe>
   remove(id: string): Promise<void>
+  /** 加载内置示例世界（public/examples/emberfall.json）并作为新世界导入。 */
+  seedSample(): Promise<Universe>
 }
 
 export interface NodeCreateInput {

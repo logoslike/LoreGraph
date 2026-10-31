@@ -89,13 +89,10 @@ function onBackdropClick(event: MouseEvent): void {
         ✕
       </button>
     </header>
-    <div class="px-5 py-4">
+    <div class="max-h-[72vh] overflow-y-auto px-5 py-4">
       <slot />
     </div>
-    <footer
-      v-if="$slots.footer"
-      class="flex justify-end gap-2 border-t border-border px-5 py-3"
-    >
+    <footer v-if="$slots.footer" class="flex justify-end gap-2 border-t border-border px-5 py-3">
       <slot name="footer" />
     </footer>
   </dialog>

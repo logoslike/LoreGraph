@@ -51,12 +51,7 @@ function onClick(event: MouseEvent): void {
 </script>
 
 <template>
-  <button
-    :type="type"
-    :disabled="disabled"
-    :class="classes"
-    @click="onClick"
-  >
+  <button :type="type" :disabled="disabled" :class="classes" @click="onClick">
     <slot />
   </button>
 </template>

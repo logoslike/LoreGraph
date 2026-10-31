@@ -1,0 +1,540 @@
+{
+  "format": "loregraph",
+  "formatVersion": 1,
+  "exportedAt": 1767225600000,
+  "universe": {
+    "id": "universe-emberfall",
+    "name": "烬海纪元",
+    "description": "天穹崩裂、星火坠海之后，烬海之水长明不熄，浮陆随潮漂流。潮汐教团在沉钟湾守灯祈航，铸灯人公会在烬港打造信标，焰鳐逐焰洄游。当长明潮再度漫过灯台，沉眠海心的潮汐之母或将醒来。",
+    "createdAt": 1724800000000,
+    "updatedAt": 1767225500000
+  },
+  "types": [
+    {
+      "id": "type-node-character",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "character",
+      "label": "角色",
+      "color": "#6366f1",
+      "icon": "user-round",
+      "order": 0,
+      "createdAt": 1724900000000,
+      "updatedAt": 1724900000000
+    },
+    {
+      "id": "type-node-organization",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "organization",
+      "label": "组织",
+      "color": "#f59e0b",
+      "icon": "building-2",
+      "order": 1,
+      "createdAt": 1724900001000,
+      "updatedAt": 1724900001000
+    },
+    {
+      "id": "type-node-location",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "location",
+      "label": "地点",
+      "color": "#10b981",
+      "icon": "map-pin",
+      "order": 2,
+      "createdAt": 1724900002000,
+      "updatedAt": 1724900002000
+    },
+    {
+      "id": "type-node-event",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "event",
+      "label": "事件",
+      "color": "#ef4444",
+      "icon": "calendar-clock",
+      "order": 3,
+      "createdAt": 1724900003000,
+      "updatedAt": 1724900003000
+    },
+    {
+      "id": "type-node-deity",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "deity",
+      "label": "神明",
+      "color": "#8b5cf6",
+      "icon": "crown",
+      "order": 4,
+      "createdAt": 1724900004000,
+      "updatedAt": 1724900004000
+    },
+    {
+      "id": "type-node-species",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "species",
+      "label": "物种",
+      "color": "#14b8a6",
+      "icon": "flame",
+      "order": 5,
+      "createdAt": 1724900005000,
+      "updatedAt": 1724900005000
+    },
+    {
+      "id": "type-rel-member-of",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "member-of",
+      "label": "隶属于",
+      "color": "#6366f1",
+      "icon": "users",
+      "order": 0,
+      "createdAt": 1724910000000,
+      "updatedAt": 1724910000000
+    },
+    {
+      "id": "type-rel-allies-with",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "allies-with",
+      "label": "结盟",
+      "color": "#10b981",
+      "icon": "shield",
+      "order": 1,
+      "createdAt": 1724910001000,
+      "updatedAt": 1724910001000
+    },
+    {
+      "id": "type-rel-located-in",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "located-in",
+      "label": "位于",
+      "color": "#f59e0b",
+      "icon": "map-pin",
+      "order": 2,
+      "createdAt": 1724910002000,
+      "updatedAt": 1724910002000
+    },
+    {
+      "id": "type-rel-participates-in",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "participates-in",
+      "label": "参与",
+      "color": "#8b5cf6",
+      "icon": "flag",
+      "order": 3,
+      "createdAt": 1724910003000,
+      "updatedAt": 1724910003000
+    },
+    {
+      "id": "type-rel-causes",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "causes",
+      "label": "导致",
+      "color": "#ef4444",
+      "icon": "flame",
+      "order": 4,
+      "createdAt": 1724910004000,
+      "updatedAt": 1724910004000
+    },
+    {
+      "id": "type-rel-related-to",
+      "universeId": "universe-emberfall",
+      "scope": "relation",
+      "key": "related-to",
+      "label": "相关",
+      "color": "#14b8a6",
+      "icon": "compass",
+      "order": 5,
+      "createdAt": 1724910005000,
+      "updatedAt": 1724910005000
+    },
+    {
+      "id": "type-node-item",
+      "universeId": "universe-emberfall",
+      "scope": "node",
+      "key": "item",
+      "label": "物品",
+      "color": "#8b5cf6",
+      "icon": "package",
+      "order": 6,
+      "createdAt": 1724900005000,
+      "updatedAt": 1724900005000
+    }
+  ],
+  "nodes": [
+    {
+      "id": "node-lanzhou",
+      "universeId": "universe-emberfall",
+      "type": "character",
+      "name": "澜舟",
+      "description": "潮汐教团最年轻的守灯人，能从灯焰的低语里听出潮汐走向。长明潮那夜她在灯台下守了七昼夜，此后左眼始终映着一缕不灭的火。",
+      "properties": {
+        "身份": "守灯人",
+        "阵营": "潮汐教团",
+        "能力": "听见灯焰低语"
+      },
+      "position": {
+        "x": 150,
+        "y": 120
+      },
+      "createdAt": 1726000000000,
+      "updatedAt": 1726003600000
+    },
+    {
+      "id": "node-chitong",
+      "universeId": "universe-emberfall",
+      "type": "character",
+      "name": "赤铜",
+      "description": "铸灯人公会的匠首，双臂嵌满修补灯芯用的铜纹。他坚持灯是可修的器物而非神明，为此与教团争执了三十年。",
+      "properties": {
+        "身份": "匠首",
+        "阵营": "铸灯人公会",
+        "年代": "烬海历 298 年生"
+      },
+      "position": {
+        "x": 150,
+        "y": 380
+      },
+      "createdAt": 1726086400000,
+      "updatedAt": 1726090000000
+    },
+    {
+      "id": "node-moya",
+      "universeId": "universe-emberfall",
+      "type": "character",
+      "name": "墨鸦",
+      "description": "潮汐教团的巡海使，驾黑帆快船巡视烬海外缘。她沉默寡言，只信手中的钩索与灯台上的光，长明潮来临时负责护送守灯人。",
+      "properties": {
+        "身份": "巡海使",
+        "阵营": "潮汐教团",
+        "能力": "夜视与钩索"
+      },
+      "position": {
+        "x": 150,
+        "y": 640
+      },
+      "createdAt": 1726172800000,
+      "updatedAt": 1726176400000
+    },
+    {
+      "id": "node-tide-order",
+      "universeId": "universe-emberfall",
+      "type": "organization",
+      "name": "潮汐教团",
+      "description": "以守灯祈航为业的信仰组织，总坛设在沉钟湾心的灯台上。教团相信灯火是潮汐之母仍行走海上的证据，灯灭之处便视为神弃之地。",
+      "properties": {
+        "性质": "信仰组织",
+        "信条": "灯不灭，海不沉",
+        "信众": 3200
+      },
+      "position": {
+        "x": 430,
+        "y": 140
+      },
+      "createdAt": 1726259200000,
+      "updatedAt": 1726262800000
+    },
+    {
+      "id": "node-lampwright-guild",
+      "universeId": "universe-emberfall",
+      "type": "organization",
+      "name": "铸灯人公会",
+      "description": "盘踞烬港工坊街的匠人结社，垄断星铁与青铜灯的锻造。他们修复遗物、贩卖信标，也悄悄拆解从海底打捞上来的神性零件。",
+      "properties": {
+        "性质": "匠人结社",
+        "技艺": "铸灯与遗物修复"
+      },
+      "position": {
+        "x": 430,
+        "y": 400
+      },
+      "createdAt": 1726345600000,
+      "updatedAt": 1726349200000
+    },
+    {
+      "id": "node-sunken-bell-bay",
+      "universeId": "universe-emberfall",
+      "type": "location",
+      "name": "沉钟湾",
+      "description": "烬海中部的一处浅海湾，湾底沉着半埋沙中的青铜巨钟，潮生灯就卧在钟腹。每逢朔望，钟体与海潮共振，湾面浮起一层薄薄的白火。",
+      "properties": {
+        "地貌": "浅海湾",
+        "水深": 60,
+        "特产": "焰鳐鳞粉"
+      },
+      "position": {
+        "x": 430,
+        "y": 680
+      },
+      "createdAt": 1726432000000,
+      "updatedAt": 1726435600000
+    },
+    {
+      "id": "node-emberport",
+      "universeId": "universe-emberfall",
+      "type": "location",
+      "name": "烬港",
+      "description": "烬海西部最大的浮陆港口，屋舍以船骨与灰岩搭成，随潮汐缓慢漂移。灯市彻夜不歇，各浮陆的信标与打捞上来的遗物在此易手。",
+      "properties": {
+        "地貌": "浮陆港口",
+        "人口": 12000
+      },
+      "position": {
+        "x": 720,
+        "y": 120
+      },
+      "createdAt": 1726518400000,
+      "updatedAt": 1726522000000
+    },
+    {
+      "id": "node-starfall-night",
+      "universeId": "universe-emberfall",
+      "type": "event",
+      "name": "坠星之夜",
+      "description": "烬海历元年，天穹裂开一道赤痕，无数星火坠入海中。海水自此长明不熄，旧历法尽废，幸存者把那一夜记作纪元的开端。",
+      "properties": {
+        "年代": "烬海历元年",
+        "影响": "天穹崩裂，海水长明"
+      },
+      "position": {
+        "x": 720,
+        "y": 380
+      },
+      "createdAt": 1726604800000,
+      "updatedAt": 1726608400000
+    },
+    {
+      "id": "node-longlight-tide",
+      "universeId": "universe-emberfall",
+      "type": "event",
+      "name": "长明潮",
+      "description": "每十年一次的大潮，海面泛白如滚沸的银。潮水携星火余烬涌上浮陆，淹熄沿岸灯标，也曾漫过灯台，逼得教团立下守灯之约。",
+      "properties": {
+        "周期": "十年一次",
+        "征兆": "海面泛白如沸银"
+      },
+      "position": {
+        "x": 720,
+        "y": 660
+      },
+      "createdAt": 1726691200000,
+      "updatedAt": 1726694800000
+    },
+    {
+      "id": "node-tide-mother",
+      "universeId": "universe-emberfall",
+      "type": "deity",
+      "name": "潮汐之母",
+      "description": "烬海的创造者与沉眠者，据说睡在海心最深的火里。她以潮汐呼吸，灯火是她梦境的余温；教团相信她醒来之日，便是烬海重归黑暗之时。",
+      "properties": {
+        "神职": "潮汐与灯火",
+        "状态": "沉眠于海心",
+        "信仰": "潮汐教团"
+      },
+      "position": {
+        "x": 1000,
+        "y": 130
+      },
+      "createdAt": 1726777600000,
+      "updatedAt": 1726781200000
+    },
+    {
+      "id": "node-flame-ray",
+      "universeId": "universe-emberfall",
+      "type": "species",
+      "name": "焰鳐",
+      "description": "烬海特有的发光鳐类，翼展可达三丈，以灰烬与浮游生物为食。它们成群追逐灯火洄游，鳞粉落在船板上会燃成细小的蓝焰。",
+      "properties": {
+        "习性": "逐光洄游",
+        "翼展": "三丈",
+        "食性": "灰烬与浮游生物"
+      },
+      "position": {
+        "x": 1000,
+        "y": 390
+      },
+      "createdAt": 1726864000000,
+      "updatedAt": 1726867600000
+    },
+    {
+      "id": "node-lamp-of-tide",
+      "universeId": "universe-emberfall",
+      "type": "item",
+      "name": "潮生灯",
+      "description": "沉在沉钟湾底的一盏青铜巨灯，被潮汐教团奉为潮汐之母的化身，也是烬海最著名的神性遗物。灯焰不灭，教团便宣称神明仍在海上行走。",
+      "properties": {
+        "身份": "神性遗物",
+        "材质": "青铜与星铁",
+        "状态": "长明不灭"
+      },
+      "position": {
+        "x": 1000,
+        "y": 660
+      },
+      "createdAt": 1726950400000,
+      "updatedAt": 1726954000000
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-lanzhou-member-of-tide-order",
+      "universeId": "universe-emberfall",
+      "source": "node-lanzhou",
+      "target": "node-tide-order",
+      "relationType": "member-of",
+      "label": "守灯人",
+      "properties": {},
+      "createdAt": 1727000000000,
+      "updatedAt": 1727000000000
+    },
+    {
+      "id": "edge-chitong-member-of-lampwright-guild",
+      "universeId": "universe-emberfall",
+      "source": "node-chitong",
+      "target": "node-lampwright-guild",
+      "relationType": "member-of",
+      "label": "匠首",
+      "properties": {},
+      "createdAt": 1727003600000,
+      "updatedAt": 1727003600000
+    },
+    {
+      "id": "edge-moya-member-of-tide-order",
+      "universeId": "universe-emberfall",
+      "source": "node-moya",
+      "target": "node-tide-order",
+      "relationType": "member-of",
+      "label": "巡海使",
+      "properties": {},
+      "createdAt": 1727007200000,
+      "updatedAt": 1727007200000
+    },
+    {
+      "id": "edge-tide-order-located-in-sunken-bell-bay",
+      "universeId": "universe-emberfall",
+      "source": "node-tide-order",
+      "target": "node-sunken-bell-bay",
+      "relationType": "located-in",
+      "label": "总坛设于湾心灯台",
+      "properties": {},
+      "createdAt": 1727010800000,
+      "updatedAt": 1727010800000
+    },
+    {
+      "id": "edge-lampwright-guild-located-in-emberport",
+      "universeId": "universe-emberfall",
+      "source": "node-lampwright-guild",
+      "target": "node-emberport",
+      "relationType": "located-in",
+      "label": "工坊街",
+      "properties": {},
+      "createdAt": 1727014400000,
+      "updatedAt": 1727014400000
+    },
+    {
+      "id": "edge-lamp-of-tide-located-in-sunken-bell-bay",
+      "universeId": "universe-emberfall",
+      "source": "node-lamp-of-tide",
+      "target": "node-sunken-bell-bay",
+      "relationType": "located-in",
+      "label": "沉于湾底沙中",
+      "properties": {},
+      "createdAt": 1727018000000,
+      "updatedAt": 1727018000000
+    },
+    {
+      "id": "edge-flame-ray-located-in-sunken-bell-bay",
+      "universeId": "universe-emberfall",
+      "source": "node-flame-ray",
+      "target": "node-sunken-bell-bay",
+      "relationType": "located-in",
+      "label": "灯影下成群洄游",
+      "properties": {},
+      "createdAt": 1727021600000,
+      "updatedAt": 1727021600000
+    },
+    {
+      "id": "edge-tide-order-allies-with-lampwright-guild",
+      "universeId": "universe-emberfall",
+      "source": "node-tide-order",
+      "target": "node-lampwright-guild",
+      "relationType": "allies-with",
+      "label": "共守长明",
+      "properties": {},
+      "createdAt": 1727025200000,
+      "updatedAt": 1727025200000
+    },
+    {
+      "id": "edge-moya-allies-with-chitong",
+      "universeId": "universe-emberfall",
+      "source": "node-moya",
+      "target": "node-chitong",
+      "relationType": "allies-with",
+      "label": "护灯同行",
+      "properties": {},
+      "createdAt": 1727028800000,
+      "updatedAt": 1727028800000
+    },
+    {
+      "id": "edge-lanzhou-participates-in-longlight-tide",
+      "universeId": "universe-emberfall",
+      "source": "node-lanzhou",
+      "target": "node-longlight-tide",
+      "relationType": "participates-in",
+      "label": "灯台下守了七夜",
+      "properties": {},
+      "createdAt": 1727032400000,
+      "updatedAt": 1727032400000
+    },
+    {
+      "id": "edge-chitong-participates-in-longlight-tide",
+      "universeId": "universe-emberfall",
+      "source": "node-chitong",
+      "target": "node-longlight-tide",
+      "relationType": "participates-in",
+      "label": "以血铜重燃灯芯",
+      "properties": {},
+      "createdAt": 1727036000000,
+      "updatedAt": 1727036000000
+    },
+    {
+      "id": "edge-starfall-night-causes-longlight-tide",
+      "universeId": "universe-emberfall",
+      "source": "node-starfall-night",
+      "target": "node-longlight-tide",
+      "relationType": "causes",
+      "label": "星火沉海，海水长明",
+      "properties": {},
+      "createdAt": 1727039600000,
+      "updatedAt": 1727039600000
+    },
+    {
+      "id": "edge-tide-mother-related-to-lamp-of-tide",
+      "universeId": "universe-emberfall",
+      "source": "node-tide-mother",
+      "target": "node-lamp-of-tide",
+      "relationType": "related-to",
+      "label": "神性寄居灯焰",
+      "properties": {},
+      "createdAt": 1727043200000,
+      "updatedAt": 1727043200000
+    },
+    {
+      "id": "edge-tide-order-related-to-tide-mother",
+      "universeId": "universe-emberfall",
+      "source": "node-tide-order",
+      "target": "node-tide-mother",
+      "relationType": "related-to",
+      "label": "守灯奉神",
+      "properties": {},
+      "createdAt": 1727046800000,
+      "updatedAt": 1727046800000
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+name: Bug report
+description: Report a reproducible problem with LoreGraph.
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. LoreGraph stores everything locally in your
+        browser, so the details below help us reproduce the problem without access to your data.
+
+        Please export and attach a minimal `.loregraph.json` file when the bug involves imported data.
+        Do not paste personal information that you are not willing to share publicly.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behaviour and what you expected instead.
+      placeholder: |
+        Actual: ...
+        Expected: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the minimal sequence of actions that triggers the bug.
+      placeholder: |
+        1. Create a universe named ...
+        2. Add a node of type ...
+        3. Drag the node ...
+        4. See error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LoreGraph version or commit
+      description: The version shown in package.json, or the commit SHA you are running.
+      placeholder: '0.1.0 or a1b2c3d'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did it happen?
+      options:
+        - Development server (npm run dev)
+        - Production build (npm run build && npm run preview)
+        - Deployed instance
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      description: For example Chrome 141 / Windows 11, or Safari 18 / macOS 15.
+      placeholder: Chrome 141 / Windows 11
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Paste relevant browser console errors or stack traces.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: export
+    attributes:
+      label: Minimal data file (optional)
+      description: Attach a `.loregraph.json` export that reproduces the issue, or paste a snippet.
+      render: json
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I can reproduce this on the latest main branch.
+          required: true

@@ -3,7 +3,12 @@ import { EntityTypeSchema, type EntityScope, type EntityType } from '@/models/ty
 import { UniverseSchema, type Universe } from '@/models/universe'
 import type { Repositories } from '@/repositories/types'
 import { LoreGraphError } from './errors'
-import type { UniverseCreateInput, UniversePatch, UniverseService } from './types'
+import type {
+  ImportService,
+  UniverseCreateInput,
+  UniversePatch,
+  UniverseService,
+} from './types'
 
 interface DefaultTypeSeed {
   scope: EntityScope
@@ -33,6 +38,9 @@ export const DEFAULT_RELATION_TYPE_SEEDS: readonly DefaultTypeSeed[] = [
   { scope: 'relation', key: 'related-to', label: '相关', color: '#94a3b8' },
 ]
 
+/** 内置示例世界导出文件的路径（相对应用 BASE_URL）。 */
+export const SAMPLE_UNIVERSE_PATH = 'examples/emberfall.json'
+
 /** 为新建世界生成默认类型实体；order 在每个 scope 内从 0 开始递增。 */
 export function buildDefaultTypes(universeId: string, timestamp: number): EntityType[] {
   const build = (seeds: readonly DefaultTypeSeed[]): EntityType[] =>
@@ -53,9 +61,30 @@ export function buildDefaultTypes(universeId: string, timestamp: number): Entity
   return [...build(DEFAULT_NODE_TYPE_SEEDS), ...build(DEFAULT_RELATION_TYPE_SEEDS)]
 }
 
+/** 读取示例世界 JSON；网络错误与 HTTP 错误统一转换为领域错误。 */
+async function fetchSampleUniverse(url: string): Promise<string> {
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch (error) {
+    throw new LoreGraphError('示例世界加载失败，请检查网络连接', { cause: error })
+  }
+  if (!response.ok) {
+    throw new LoreGraphError(`示例世界加载失败（HTTP ${response.status}）`)
+  }
+  try {
+    return await response.text()
+  } catch (error) {
+    throw new LoreGraphError('示例世界文件读取失败', { cause: error })
+  }
+}
+
 /** 世界服务实现。 */
 export class UniverseServiceImpl implements UniverseService {
-  constructor(private readonly repos: Repositories) {}
+  constructor(
+    private readonly repos: Repositories,
+    private readonly importer: ImportService,
+  ) {}
 
   async list(): Promise<Universe[]> {
     const universes = await this.repos.universes.list()
@@ -120,5 +149,20 @@ export class UniverseServiceImpl implements UniverseService {
       }
       await this.repos.universes.delete(id)
     })
+  }
+
+  async seedSample(): Promise<Universe> {
+    const url = `${import.meta.env.BASE_URL}${SAMPLE_UNIVERSE_PATH}`
+    const raw = await fetchSampleUniverse(url)
+    const parsed = this.importer.parse(raw)
+    if (!parsed.ok) {
+      throw new LoreGraphError(`示例世界数据无效：${parsed.issues.join('；')}`)
+    }
+    const universe = await this.importer.import(parsed.data)
+    // 示例世界不是用户主动导入，恢复原始名称（import 会追加「（导入）」）。
+    if (universe.name !== parsed.data.universe.name) {
+      return await this.update(universe.id, { name: parsed.data.universe.name })
+    }
+    return universe
   }
 }

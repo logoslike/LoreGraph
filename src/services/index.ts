@@ -1,4 +1,5 @@
-import { createMemoryRepositories } from '@/repositories/memory'
+import { createLoreDatabase } from '@/db/schema'
+import { createDexieRepositories } from '@/repositories'
 import type { Repositories } from '@/repositories/types'
 import { DebouncedAutosave } from './autosave'
 import { ExportServiceImpl } from './export.service'
@@ -10,15 +11,16 @@ import { UniverseServiceImpl } from './universe.service'
 
 /** 用给定仓储装配全部服务。 */
 export function createServices(repos: Repositories): Services {
+  const importer = new ImportServiceImpl(repos)
   return {
-    universes: new UniverseServiceImpl(repos),
+    universes: new UniverseServiceImpl(repos, importer),
     graph: new GraphServiceImpl(repos),
     types: new TypeServiceImpl(repos),
-    importer: new ImportServiceImpl(repos),
+    importer,
     exporter: new ExportServiceImpl(repos),
     autosave: new DebouncedAutosave(),
   }
 }
 
-/** 默认单例：T1 先装配内存仓储，T2 切换为 Dexie 实现。 */
-export const services: Services = createServices(createMemoryRepositories())
+/** 浏览器端默认单例：Dexie 持久化仓储。 */
+export const services: Services = createServices(createDexieRepositories(createLoreDatabase()))
