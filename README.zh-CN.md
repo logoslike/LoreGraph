@@ -94,7 +94,7 @@ npm run test:unit
 ```
 
 测试规模为 **100 个单元测试（13 个文件）**（Vitest + jsdom + `fake-indexeddb`）与
-**27 个端到端测试（7 个文件）**（Playwright，Chromium）。首次运行前安装浏览器，再执行
+**33 个端到端测试（8 个文件）**（Playwright，Chromium）。首次运行前安装浏览器，再执行
 E2E：
 
 ```bash

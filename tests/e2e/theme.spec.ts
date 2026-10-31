@@ -1,8 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { openUniverse } from './helpers'
 
-/** LG-011 / LG-012 主题持久化与面板折叠。 */
-test.describe('LG-011 主题切换与持久化', () => {
+/**
+ * UI 主题与布局：主题持久化与面板折叠。
+ * 说明：属于 UI 基础能力，不在 PRD §6 的 LG-001~LG-012 验收编号内。
+ */
+test.describe('UI 主题与布局', () => {
   test('切换深色主题后刷新仍然生效', async ({ page }) => {
     await openUniverse(page, '烬海纪元')
 
@@ -29,9 +32,7 @@ test.describe('LG-011 主题切换与持久化', () => {
     await expect(page.locator('html')).not.toHaveClass(/dark/)
     expect(await page.evaluate(() => window.localStorage.getItem('loregraph.theme'))).toBe('light')
   })
-})
 
-test.describe('LG-012 面板折叠', () => {
   test('侧边栏可收起并用悬浮按钮展开', async ({ page }) => {
     await openUniverse(page, '烬海纪元')
     await expect(page.getByTestId('sidebar')).toBeVisible()

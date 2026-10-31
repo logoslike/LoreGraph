@@ -26,8 +26,8 @@ async function exportFirstUniverse(
   return { file, data }
 }
 
-/** LG-008 / LG-009 导出下载与导入往返。 */
-test.describe('LG-008 导出与 LG-009 导入往返', () => {
+/** LG-011 导出世界。 */
+test.describe('LG-011 导出', () => {
   test('导出下载 JSON 文件，内容与当前世界一致', async ({ page }, testInfo) => {
     await openUniverse(page, '烬海纪元')
     await expect(page.getByTestId('lore-node')).toHaveCount(12)
@@ -41,7 +41,10 @@ test.describe('LG-008 导出与 LG-009 导入往返', () => {
     expect(data.edges as unknown[]).toHaveLength(14)
     expect(data.types as unknown[]).toHaveLength(13)
   })
+})
 
+/** LG-012 导入世界（含非法文件的可读提示）。 */
+test.describe('LG-012 导入', () => {
   test('导出的 JSON 再导入为新世界，节点数一致且数据隔离', async ({ page }, testInfo) => {
     await openUniverse(page, '烬海纪元')
     const { file } = await exportFirstUniverse(page, testInfo)
@@ -66,10 +69,7 @@ test.describe('LG-008 导出与 LG-009 导入往返', () => {
       page.getByTestId('universe-card').filter({ hasText: '烬海纪元' }).first(),
     ).toBeVisible()
   })
-})
 
-/** LG-010 非法导入文件在界面上给出可读问题。 */
-test.describe('LG-010 非法导入显示问题清单', () => {
   test('引用完整性错误逐条展示', async ({ page }, testInfo) => {
     const sample = JSON.parse(await readFile(SAMPLE_PATH, 'utf8')) as {
       nodes: { type: string }[]

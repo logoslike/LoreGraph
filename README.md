@@ -108,7 +108,7 @@ npm run test:unit
 ```
 
 The suite contains **100 unit tests across 13 files** (Vitest with jsdom and
-`fake-indexeddb`) and **27 end-to-end tests across 7 files** (Playwright, Chromium). Install
+`fake-indexeddb`) and **33 end-to-end tests across 8 files** (Playwright, Chromium). Install
 the browser once and run the E2E suite:
 
 ```bash

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { createNodeViaToolbar, createUniverse, openUniverse, useEmptyLibrary } from './helpers'
 
-/** LG-007 搜索：过滤节点列表并选中命中节点。 */
-test.describe('LG-007 搜索过滤与选中', () => {
+/** LG-009 搜索：过滤节点列表并选中命中节点。 */
+test.describe('LG-009 搜索与筛选', () => {
   test('按名称子串过滤节点列表，空查询恢复全部', async ({ page }) => {
     await openUniverse(page, '烬海纪元')
     await expect(page.getByTestId('lore-node')).toHaveCount(12)

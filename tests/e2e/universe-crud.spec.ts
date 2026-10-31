@@ -7,8 +7,8 @@ import {
   useEmptyLibrary,
 } from './helpers'
 
-/** LG-002 世界的增删改查与数据隔离。 */
-test.describe('LG-002 世界 CRUD 与隔离', () => {
+/** LG-001 世界 CRUD：创建、重命名、删除。 */
+test.describe('LG-001 世界 CRUD', () => {
   test('新建世界后进入空工作区，返回列表可见卡片', async ({ page }) => {
     await useEmptyLibrary(page)
     await createUniverse(page, '余烬王朝')
@@ -67,8 +67,11 @@ test.describe('LG-002 世界 CRUD 与隔离', () => {
     await expect(page.getByTestId('universe-card')).toHaveCount(0)
     await expect(page.getByTestId('new-universe-empty-btn')).toBeVisible()
   })
+})
 
-  test('新建世界与示例世界的数据互相隔离', async ({ page }) => {
+/** LG-002 世界隔离与切换：不同世界数据互不影响，可用切换器切换。 */
+test.describe('LG-002 世界隔离与切换', () => {
+  test('世界数据互相隔离，并可用世界切换器切换', async ({ page }) => {
     // 本用例需要示例世界存在，不跳过首启种子
     await page.goto('/')
     await expect(page.getByTestId('universe-card').first()).toBeVisible()
@@ -85,5 +88,14 @@ test.describe('LG-002 世界 CRUD 与隔离', () => {
     await openUniverse(page, '潮汐残卷')
     await expect(page.getByTestId('graph-empty')).toBeVisible()
     await expect(page.getByTestId('lore-node')).toHaveCount(0)
+
+    // 世界切换器：切到示例世界显示其 12 个节点，切回空世界后恢复空画布
+    const switcher = page.getByTestId('world-switcher')
+    await switcher.selectOption({ label: '烬海纪元' })
+    await expect(page.getByTestId('lore-node')).toHaveCount(12)
+
+    await switcher.selectOption({ label: '潮汐残卷' })
+    await expect(page.getByTestId('lore-node')).toHaveCount(0)
+    await expect(page.getByTestId('graph-empty')).toBeVisible()
   })
 })

@@ -106,7 +106,7 @@ business rules belong in services, and persistence details belong in repositorie
 
 - Unit and integration tests live in `tests/unit/**/*.spec.ts` (**100 tests across 13 files**)
   and run on Vitest with jsdom and `fake-indexeddb` (see `tests/unit/setup.ts`).
-- End-to-end tests live in `tests/e2e/**/*.spec.ts` (**27 tests across 7 files**) and run on
+- End-to-end tests live in `tests/e2e/**/*.spec.ts` (**33 tests across 8 files**) and run on
   Playwright with Chromium. Install the browser once with
   `npx playwright install chromium`.
 - Service tests can be built on the in-memory repositories:

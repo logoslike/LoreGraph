@@ -9,6 +9,7 @@ export interface StoredNode {
   name: string
   type: string
   properties: Record<string, unknown>
+  position: { x: number; y: number }
 }
 
 /** 在导航前声明「已首启」，避免每个用例都自动载入示例世界。 */
@@ -162,6 +163,41 @@ export async function addProperty(page: Page, key: string, value: string): Promi
   await page.getByTestId('add-property-btn').click()
   await page.getByTestId('property-key-input').last().fill(key)
   await page.getByTestId('property-value-input').last().fill(value)
+}
+
+/** 读取 Vue Flow 视口的 transform 样式串，用于断言视图发生位移/缩放。 */
+export async function readViewportTransform(page: Page): Promise<string> {
+  return await page
+    .locator('.vue-flow__transformationpane')
+    .evaluate((element) => element.getAttribute('style') ?? '')
+}
+
+/** 从 IndexedDB 读取指定名称的节点。 */
+export async function findStoredNode(page: Page, name: string): Promise<StoredNode | undefined> {
+  const nodes = await readTable<StoredNode>(page, 'nodes')
+  return nodes.find((node) => node.name === name)
+}
+
+/** 轮询 IndexedDB，等待指定节点的坐标落库并返回该坐标。 */
+export async function waitForStoredNodePosition(
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number }> {
+  let position: { x: number; y: number } | null = null
+  await expect
+    .poll(
+      async () => {
+        const node = await findStoredNode(page, name)
+        position = node?.position ?? null
+        return position
+      },
+      { timeout: 15_000, message: `等待节点「${name}」坐标写入 IndexedDB 超时` },
+    )
+    .not.toBeNull()
+  if (position === null) {
+    throw new Error(`节点「${name}」没有写入 IndexedDB`)
+  }
+  return position
 }
 
 /** 读取 IndexedDB 中某张表（应用使用 Dexie，库名 loregraph）。 */

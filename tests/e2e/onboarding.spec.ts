@@ -2,9 +2,10 @@ import { expect, test } from '@playwright/test'
 import { gotoUniverses, useEmptyLibrary } from './helpers'
 
 /**
- * LG-001 首启引导：没有任何世界时自动载入内置示例世界（烬海纪元）。
+ * ONB 首启引导：没有任何世界时自动载入内置示例世界（烬海纪元）。
+ * 说明：首启引导属于仓库自建能力，不在 PRD §6 的 LG-001~LG-012 验收编号内。
  */
-test.describe('LG-001 首启示例世界', () => {
+test.describe('ONB 首启引导', () => {
   test('首次访问自动载入示例世界并展示统计', async ({ page }) => {
     await gotoUniverses(page)
 

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   addProperty,
   connectNodes,
@@ -9,19 +9,32 @@ import {
   waitForPersistedNode,
 } from './helpers'
 
-/** LG-004 自动保存：编辑结果在刷新后仍然存在。 */
-test.describe('LG-004 自动保存与刷新持久化', () => {
-  test('节点改名与自定义属性刷新后仍在', async ({ page }) => {
-    await useEmptyLibrary(page)
-    await createUniverse(page, '存续测试')
+/** 建一个空世界并写入待验证的节点编辑（改名 + 自定义属性）。 */
+async function editNodeForPersistence(page: Page): Promise<void> {
+  await useEmptyLibrary(page)
+  await createUniverse(page, '存续测试')
+  await createNodeViaToolbar(page, '潮生灯')
+  const nameInput = page.getByTestId('inspector-name')
+  await nameInput.fill('潮生灯·记')
+  await nameInput.blur()
+  await addProperty(page, '年份', '第三纪')
+}
 
-    await createNodeViaToolbar(page, '潮生灯')
-    const nameInput = page.getByTestId('inspector-name')
-    await nameInput.fill('潮生灯·记')
-    await nameInput.blur()
-    await addProperty(page, '年份', '第三纪')
+test.describe('LG-004 编辑自动保存', () => {
+  test('节点改名与自定义属性自动写入 IndexedDB', async ({ page }) => {
+    await editNodeForPersistence(page)
 
-    // 轮询 IndexedDB，确认自动保存已真正落库（不使用固定等待）
+    // 自动保存防抖结束后落库；用轮询读取 IndexedDB，不使用固定等待
+    await waitForPersistedNode(
+      page,
+      (node) => node.name === '潮生灯·记' && node.properties['年份'] === '第三纪',
+    )
+  })
+})
+
+test.describe('LG-010 刷新持久化', () => {
+  test('刷新后节点改名与自定义属性仍在', async ({ page }) => {
+    await editNodeForPersistence(page)
     await waitForPersistedNode(
       page,
       (node) => node.name === '潮生灯·记' && node.properties['年份'] === '第三纪',
