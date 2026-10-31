@@ -1,0 +1,30 @@
+/* 设计令牌：:root 为浅色，.dark 覆盖为深色 */
+:root {
+  --bg: #ffffff;
+  --surface: #f7f7f8;
+  --surface-2: #f0f1f3;
+  --fg: #202124;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #6366f1;
+  --accent-fg: #ffffff;
+  --danger: #dc2626;
+  --ring: rgba(99, 102, 241, 0.45);
+  --graph-dot: #d4d4d8;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #151619;
+  --surface: #1e2025;
+  --surface-2: #252830;
+  --fg: #e5e7eb;
+  --muted: #9ca3af;
+  --border: #30333a;
+  --accent: #818cf8;
+  --accent-fg: #151619;
+  --danger: #f87171;
+  --ring: rgba(129, 140, 248, 0.45);
+  --graph-dot: #3f434c;
+  color-scheme: dark;
+}

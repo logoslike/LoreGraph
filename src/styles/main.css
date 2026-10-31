@@ -1,0 +1,46 @@
+@import './tokens.css';
+@import 'tailwindcss';
+
+/* 主题由 .dark 类驱动，而不是系统媒体查询 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 把设计令牌映射为 Tailwind 语义色：bg-bg、text-fg、border-border 等 */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --color-graph-dot: var(--graph-dot);
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* @vue-flow/background 的点阵颜色跟随主题 */
+.vue-flow__background {
+  color: var(--graph-dot);
+}
