@@ -3,12 +3,7 @@ import { EntityTypeSchema, type EntityScope, type EntityType } from '@/models/ty
 import { UniverseSchema, type Universe } from '@/models/universe'
 import type { Repositories } from '@/repositories/types'
 import { LoreGraphError } from './errors'
-import type {
-  ImportService,
-  UniverseCreateInput,
-  UniversePatch,
-  UniverseService,
-} from './types'
+import type { ImportService, UniverseCreateInput, UniversePatch, UniverseService } from './types'
 
 interface DefaultTypeSeed {
   scope: EntityScope

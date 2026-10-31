@@ -12,9 +12,7 @@ export class MemoryEdgeRepository implements EdgeRepository {
   }
 
   async getByUniverse(universeId: string): Promise<LoreEdge[]> {
-    return [...this.items.values()]
-      .filter((edge) => edge.universeId === universeId)
-      .map(cloneValue)
+    return [...this.items.values()].filter((edge) => edge.universeId === universeId).map(cloneValue)
   }
 
   async getByNodeId(nodeId: string): Promise<LoreEdge[]> {

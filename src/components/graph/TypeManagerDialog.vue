@@ -50,6 +50,12 @@ function makeKey(): string {
   return 'type-' + stamp + suffix
 }
 
+/** 切换类型作用域并重置新建表单。 */
+function selectScope(value: EntityScope): void {
+  scope.value = value
+  resetNewForm()
+}
+
 function resetNewForm(): void {
   newLabel.value = ''
   newColor.value = '#6366f1'
@@ -208,7 +214,7 @@ async function confirmDelete(type: EntityType): Promise<void> {
           class="flex-1 rounded-md px-3 py-1.5 text-sm transition-colors"
           :class="scope === tab.value ? 'bg-bg text-fg shadow-sm' : 'text-muted hover:text-fg'"
           :data-testid="'type-tab-' + tab.value"
-          @click="scope = tab.value; resetNewForm()"
+          @click="selectScope(tab.value)"
         >
           {{ tab.label }}
         </button>
@@ -219,9 +225,7 @@ async function confirmDelete(type: EntityType): Promise<void> {
         class="space-y-2.5 rounded-lg border border-border bg-bg p-3"
         @submit.prevent="onCreate"
       >
-        <p class="text-xs font-medium tracking-wide text-muted uppercase">
-          新建{{ scopeLabel }}
-        </p>
+        <p class="text-xs font-medium tracking-wide text-muted uppercase">新建{{ scopeLabel }}</p>
         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
           <label class="block">
             <span class="mb-1 block text-sm text-muted">名称</span>
@@ -259,12 +263,7 @@ async function confirmDelete(type: EntityType): Promise<void> {
         </div>
         <IconPicker v-model="newIcon" label="图标（可选）" />
         <div class="flex justify-end">
-          <BaseButton
-            type="submit"
-            size="sm"
-            data-testid="submit-type-btn"
-            :disabled="creating"
-          >
+          <BaseButton type="submit" size="sm" data-testid="submit-type-btn" :disabled="creating">
             新建{{ scopeLabel }}
           </BaseButton>
         </div>

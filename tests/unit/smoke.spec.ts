@@ -103,9 +103,7 @@ describe('LoreGraph Phase 0 冒烟测试', () => {
     expect(snapshot.node.id).toBe(hero.id)
     expect(snapshot.edges.map((item) => item.id)).toEqual([edge.id])
 
-    expect((await services.graph.listNodes(universe.id)).map((item) => item.id)).toEqual([
-      city.id,
-    ])
+    expect((await services.graph.listNodes(universe.id)).map((item) => item.id)).toEqual([city.id])
     expect(await services.graph.listEdges(universe.id)).toHaveLength(0)
 
     await services.graph.restoreNode(snapshot)

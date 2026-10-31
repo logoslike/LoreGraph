@@ -98,7 +98,9 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
 /** 边只在两端节点都可见时渲染，避免筛选后出现悬空连线。 */
 const flowEdges = computed<Edge[]>(() =>
   graph.edges
-    .filter((edge) => visibleNodeIds.value.has(edge.source) && visibleNodeIds.value.has(edge.target))
+    .filter(
+      (edge) => visibleNodeIds.value.has(edge.source) && visibleNodeIds.value.has(edge.target),
+    )
     .map((edge) => {
       const relation = types.relationTypeByKey(edge.relationType)
       const color = relation?.color ?? 'var(--muted)'
@@ -120,9 +122,7 @@ const flowEdges = computed<Edge[]>(() =>
     }),
 )
 
-const canDelete = computed(
-  () => graph.selectedNodeId !== null || graph.selectedEdgeId !== null,
-)
+const canDelete = computed(() => graph.selectedNodeId !== null || graph.selectedEdgeId !== null)
 
 /** 小地图节点颜色跟随节点类型色。 */
 function miniMapNodeColor(node: GraphNode): string {
@@ -321,7 +321,12 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
         <p class="text-xs text-muted">
           从这个世界的第一个节点开始：新建人物、地点或事件，再从节点两侧拖出连线建立关系。
         </p>
-        <BaseButton class="mt-1" size="sm" data-testid="empty-create-node-btn" @click="openCreateDialog">
+        <BaseButton
+          class="mt-1"
+          size="sm"
+          data-testid="empty-create-node-btn"
+          @click="openCreateDialog"
+        >
           <Plus :size="16" />
           新建节点
         </BaseButton>
@@ -403,5 +408,38 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
   border-radius: 10px;
   background: var(--surface-2);
   color: var(--accent);
+}
+
+/* Vue Flow 内置控件与小地图跟随主题令牌，避免深色下出现白色面板。 */
+:deep(.vue-flow__controls) {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+}
+
+:deep(.vue-flow__controls-button) {
+  border-bottom-color: var(--border);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+:deep(.vue-flow__controls-button:hover) {
+  background: var(--surface-2);
+}
+
+:deep(.vue-flow__controls-button svg) {
+  fill: currentColor;
+}
+
+:deep(.vue-flow__minimap) {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+:deep(.vue-flow__minimap-mask) {
+  fill: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 </style>

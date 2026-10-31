@@ -10,17 +10,20 @@ LoreGraph 是给写作者、跑团主持人和设定集爱好者用的 Web 端�
 
 ## 截图
 
-<!-- 截图占位，UI 定稿后补充真实截图：
-     1. 世界列表：docs/screenshots/universes.png
-        说明：在一个本地资料库中管理多个世界。
-     2. 工作区：docs/screenshots/workspace.png
-        说明：图谱画布与左右两侧面板。
-     3. 深色主题：docs/screenshots/workspace-dark.png
-        说明：同一工作区的深色模式。
-     4. 导入问题：docs/screenshots/import-issues.png
-        说明：导入前展示带字段路径的校验问题清单。 -->
+**世界列表** —— 在一个本地资料库中管理多个世界。
 
-截图将在首个公开版本发布前补充。
+![世界列表](docs/screenshots/universes.png)
+
+**工作区** —— 图谱画布与左右两侧面板（浅色主题）。
+
+![浅色主题的工作区](docs/screenshots/workspace-light.png)
+
+| 深色主题                                                 | 检查器                                             |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| ![深色主题的工作区](docs/screenshots/workspace-dark.png) | ![检查器面板](docs/screenshots/inspector.png)      |
+| 同一世界的深色模式。                                     | 编辑节点的名称、类型、描述、自定义属性与关联关系。 |
+
+所有截图均在 1440×900 下拍摄。
 
 ## 核心特性
 
@@ -57,7 +60,7 @@ LoreGraph 是给写作者、跑团主持人和设定集爱好者用的 Web 端�
 | 构建工具 | Vite 8 + `@vitejs/plugin-vue`                                   |
 | 样式     | Tailwind CSS v4 + CSS 设计令牌                                  |
 | 状态管理 | Pinia                                                           |
-| 路由     | Vue Router（HTML5 history 模式）                                |
+| 路由     | Vue Router 5（HTML5 history 模式）                              |
 | 图谱画布 | Vue Flow（`@vue-flow/core` 及 background / controls / minimap） |
 | 持久化   | Dexie 4（IndexedDB，数据库名 `loregraph`）                      |
 | 校验     | Zod 4                                                           |
@@ -67,7 +70,8 @@ LoreGraph 是给写作者、跑团主持人和设定集爱好者用的 Web 端�
 
 ## 快速开始
 
-**环境要求：** Node.js **24 或更高版本**（`engines` 字段也允许 22.18+），包管理器为 npm。
+**环境要求：** Node.js **24.12 或更高版本**（`engines` 字段也允许 22.18+），包管理器为
+npm。
 
 ```bash
 npm install
@@ -89,8 +93,18 @@ npm run lint
 npm run test:unit
 ```
 
-E2E 测试使用 Playwright（`playwright.config.ts`），首次运行前执行
-`npx playwright install chromium` 安装浏览器；E2E 用例仍在补充中，当前以单元测试作为必过检查。
+测试规模为 **100 个单元测试（13 个文件）**（Vitest + jsdom + `fake-indexeddb`）与
+**27 个端到端测试（7 个文件）**（Playwright，Chromium）。首次运行前安装浏览器，再执行
+E2E：
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+CI（`.github/workflows/ci.yml`）在每次 push 与 pull request 时依次执行：lint → 类型检查 →
+单元测试 → 生产构建 → Playwright E2E（使用 Chromium）。任务失败时会归档 Playwright 报告与
+测试结果。
 
 ## 架构简述
 

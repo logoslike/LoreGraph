@@ -9,7 +9,7 @@ mind when proposing changes: no server-side features, no telemetry, no remote st
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) **24 or newer**. The `engines` field also allows 22.18+,
+- [Node.js](https://nodejs.org/) **24.12 or newer**. The `engines` field also allows 22.18+,
   but local development and CI target Node 24.
 - **npm** (ships with Node.js). This project uses npm and `package-lock.json`; do not run
   pnpm install, yarn install, or delete the lockfile.
@@ -52,7 +52,7 @@ The dev server starts on <http://127.0.0.1:5173>.
 
 ```text
 .
-├─ docs/                     Architecture and data-format documentation
+├─ docs/                     Architecture, data format, and screenshots
 ├─ public/
 │  └─ examples/              Bundled sample world (emberfall.json)
 ├─ src/
@@ -73,8 +73,9 @@ The dev server starts on <http://127.0.0.1:5173>.
 │  ├─ App.vue                Root component
 │  └─ main.ts                Application bootstrap
 ├─ tests/
-│  └─ unit/                  Vitest specs (services, repositories, autosave)
-└─ .github/                  Issue and pull request templates
+│  ├─ unit/                  Vitest specs (models, services, repositories)
+│  └─ e2e/                   Playwright end-to-end specs
+└─ .github/                  CI workflow, issue and pull request templates
 ```
 
 Read [docs/architecture.md](docs/architecture.md) before changing anything below the view
@@ -103,8 +104,11 @@ business rules belong in services, and persistence details belong in repositorie
 
 ## Testing
 
-- Unit and integration tests live in `tests/unit/**/*.spec.ts` and run on Vitest with jsdom
-  and `fake-indexeddb` (see `tests/unit/setup.ts`).
+- Unit and integration tests live in `tests/unit/**/*.spec.ts` (**100 tests across 13 files**)
+  and run on Vitest with jsdom and `fake-indexeddb` (see `tests/unit/setup.ts`).
+- End-to-end tests live in `tests/e2e/**/*.spec.ts` (**27 tests across 7 files**) and run on
+  Playwright with Chromium. Install the browser once with
+  `npx playwright install chromium`.
 - Service tests can be built on the in-memory repositories:
   `createMemoryRepositories()` + `createServices(repos)`. Persistence tests use
   `createLoreDatabase()` with a per-test database name; `tests/unit/repositories/test-db.ts`
@@ -114,14 +118,24 @@ business rules belong in services, and persistence details belong in repositorie
 - Before opening a pull request, all of these must pass locally:
 
 ```bash
-npm run type-check
 npm run lint
+npm run type-check
 npm run test:unit
+npm run build
 ```
 
-Playwright is configured in `playwright.config.ts`, and `npm run test:e2e` runs specs from
-`tests/e2e/`; install the browser once with `npx playwright install chromium`. The end-to-end
-suite is still being added, so it is not part of the required pull-request checklist yet.
+Run the E2E suite locally as well when a change touches the UI, persistence, or import/export:
+
+```bash
+npm run test:e2e
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request with Node.js 24 and npm. The
+single `verify` job runs lint, type-check, unit tests, and the production build, then installs
+Chromium and runs the E2E suite; it uploads the Playwright report and test results when it
+fails. A pull request is ready to merge only when this job is green.
 
 ## Commit messages
 

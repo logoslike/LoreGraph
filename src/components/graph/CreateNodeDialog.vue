@@ -135,13 +135,10 @@ async function onSubmit(): Promise<void> {
     </div>
 
     <template #footer>
-      <BaseButton variant="secondary" size="sm" @click="emit('update:open', false)">取消</BaseButton>
-      <BaseButton
-        size="sm"
-        data-testid="submit-node-btn"
-        :disabled="!canSubmit"
-        @click="onSubmit"
+      <BaseButton variant="secondary" size="sm" @click="emit('update:open', false)"
+        >取消</BaseButton
       >
+      <BaseButton size="sm" data-testid="submit-node-btn" :disabled="!canSubmit" @click="onSubmit">
         创建节点
       </BaseButton>
     </template>

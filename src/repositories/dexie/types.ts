@@ -23,11 +23,7 @@ export class DexieEntityTypeRepository implements EntityTypeRepository {
     return sortEntityTypes(rows).map((row) => EntityTypeSchema.parse(row))
   }
 
-  async getByKey(
-    universeId: string,
-    scope: EntityScope,
-    key: string,
-  ): Promise<EntityType | null> {
+  async getByKey(universeId: string, scope: EntityScope, key: string): Promise<EntityType | null> {
     const row = await this.db.entityTypes
       .where('[universeId+scope+key]')
       .equals([universeId, scope, key])

@@ -12,9 +12,7 @@ export class MemoryNodeRepository implements NodeRepository {
   }
 
   async getByUniverse(universeId: string): Promise<LoreNode[]> {
-    return [...this.items.values()]
-      .filter((node) => node.universeId === universeId)
-      .map(cloneValue)
+    return [...this.items.values()].filter((node) => node.universeId === universeId).map(cloneValue)
   }
 
   async create(node: LoreNode): Promise<LoreNode> {

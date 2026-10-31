@@ -128,8 +128,9 @@ need one narrow behaviour.
   getters by key.
 - `stores/graph.ts` — nodes, edges, selection, and the optimistic update path for node edits.
 - `stores/ui.ts` — theme, panel collapse state, search query, active type filters, and toast
-  notifications. Theme is persisted in `localStorage` under `loregraph.theme`; the first-run
-  sample flag uses `loregraph.firstRunSeeded`; everything else is session-only.
+  notifications. Theme is persisted in `localStorage` under `loregraph.theme`; everything else
+  is session-only. The first-run sample flag (`loregraph.firstRunSeeded`) is owned by the
+  universe view, which loads the sample world once when the library is empty.
 - `composables/useTheme.ts`, `useToast.ts`, `useShortcuts.ts`, `useGraphViewport.ts` —
   read-only theme access, notification helpers (including the 8-second undo toast), the global
   keyboard shortcuts, and viewport fit/zoom operations for the canvas.

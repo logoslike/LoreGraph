@@ -12,17 +12,20 @@ The interface is written in Chinese; this README is available in
 
 ## Screenshots
 
-<!-- Screenshot placeholders — add real captures when the UI is final.
-     1. Universe list: docs/screenshots/universes.png
-        Caption: Manage multiple worlds from one local library.
-     2. Workspace: docs/screenshots/workspace.png
-        Caption: Graph canvas with the sidebar and inspector.
-     3. Dark theme: docs/screenshots/workspace-dark.png
-        Caption: The same workspace in dark mode.
-     4. Import issues: docs/screenshots/import-issues.png
-        Caption: Validation issues listed before importing a world. -->
+**Universe library** — manage multiple worlds from one local library.
 
-Screenshots will be added before the first public release.
+![Universe library](docs/screenshots/universes.png)
+
+**Workspace** — graph canvas with the sidebar and inspector (light theme).
+
+![Workspace in light theme](docs/screenshots/workspace-light.png)
+
+| Dark theme                                                      | Inspector                                                                   |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| ![Workspace in dark theme](docs/screenshots/workspace-dark.png) | ![Inspector editing a node](docs/screenshots/inspector.png)                 |
+| The same world with the dark theme.                             | Editing a node's name, type, description, custom properties, and relations. |
+
+All screenshots are captured at 1440×900.
 
 ## Features
 
@@ -51,8 +54,9 @@ Screenshots will be added before the first public release.
   A type that is still in use cannot be deleted.
 - **Universe management.** Create, rename, and delete worlds from a card library with
   per-world node/edge/type counts; each world has its own types, nodes, and relations.
-- **Sample world.** An original Chinese fantasy world (烬海纪元) is bundled and offered on first
-  run, so the app is never an empty canvas.
+- **Sample world.** An original Chinese fantasy world (烬海纪元) is bundled and loaded
+  automatically the first time you open the app when the library is empty, so it is never an
+  empty canvas; it can also be loaded from the empty state.
 - **JSON import and export.** Move a world between browsers and back it up as a
   `.loregraph.json` file; import problems are listed with field paths instead of failing
   silently (see [the data format](docs/data-format.md)).
@@ -70,7 +74,7 @@ Screenshots will be added before the first public release.
 | Build tool   | Vite 8 + `@vitejs/plugin-vue`                                  |
 | Styling      | Tailwind CSS v4 with CSS design tokens                         |
 | State        | Pinia                                                          |
-| Routing      | Vue Router (HTML5 history mode)                                |
+| Routing      | Vue Router 5 (HTML5 history mode)                              |
 | Graph canvas | Vue Flow (`@vue-flow/core` with background, controls, minimap) |
 | Persistence  | Dexie 4 over IndexedDB (database `loregraph`)                  |
 | Validation   | Zod 4                                                          |
@@ -80,7 +84,8 @@ Screenshots will be added before the first public release.
 
 ## Quick start
 
-**Requirements:** Node.js **24 or newer** (the `engines` field also allows 22.18+) and npm.
+**Requirements:** Node.js **24.12 or newer** (the `engines` field also allows 22.18+) and
+npm.
 
 ```bash
 npm install
@@ -102,9 +107,18 @@ npm run lint
 npm run test:unit
 ```
 
-Playwright is set up for end-to-end tests (`playwright.config.ts`); install the browser once
-with `npx playwright install chromium`. End-to-end specs are still being added, so the unit
-suite is the required check for now.
+The suite contains **100 unit tests across 13 files** (Vitest with jsdom and
+`fake-indexeddb`) and **27 end-to-end tests across 7 files** (Playwright, Chromium). Install
+the browser once and run the E2E suite:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint → type-check → unit
+tests → production build → Playwright E2E on Chromium. When the job fails, the Playwright
+report and test results are uploaded as artifacts.
 
 ## Architecture
 

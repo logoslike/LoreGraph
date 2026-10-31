@@ -1,7 +1,4 @@
-import {
-  LoreExportSchema,
-  type LoreExport,
-} from '@/models/export-format'
+import { LoreExportSchema, type LoreExport } from '@/models/export-format'
 import { newId } from '@/models/ids'
 import { LoreEdgeSchema } from '@/models/edge'
 import { LoreNodeSchema } from '@/models/node'
@@ -40,9 +37,7 @@ export class ImportServiceImpl implements ImportService {
     if (!result.success) {
       return {
         ok: false,
-        issues: result.error.issues.map(
-          (issue) => `${formatPath(issue.path)}：${issue.message}`,
-        ),
+        issues: result.error.issues.map((issue) => `${formatPath(issue.path)}：${issue.message}`),
       }
     }
     return this.checkReferences(result.data)

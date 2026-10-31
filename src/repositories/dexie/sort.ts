@@ -4,9 +4,7 @@ import type { EntityType } from '@/models/type-def'
 export function sortByCreatedAt<T extends { id: string; createdAt: number }>(
   items: readonly T[],
 ): T[] {
-  return [...items].sort(
-    (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id),
-  )
+  return [...items].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
 }
 
 /** 类型按 order 升序，其次创建时间与 id。 */

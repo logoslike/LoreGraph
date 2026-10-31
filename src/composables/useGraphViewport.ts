@@ -74,11 +74,10 @@ export function useGraphViewport(flow: VueFlowStore): GraphViewport {
     }
     const width = node.dimensions.width || 0
     const height = node.dimensions.height || 0
-    return setCenter(
-      node.computedPosition.x + width / 2,
-      node.computedPosition.y + height / 2,
-      { zoom: zoom ?? getViewport().zoom, duration: 280 },
-    )
+    return setCenter(node.computedPosition.x + width / 2, node.computedPosition.y + height / 2, {
+      zoom: zoom ?? getViewport().zoom,
+      duration: 280,
+    })
   }
 
   function viewportCenter(): XYPosition {

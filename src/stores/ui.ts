@@ -48,7 +48,8 @@ export const useUiStore = defineStore('ui', {
   actions: {
     /** 挂载前调用：优先读本地偏好，否则跟随系统配色。 */
     initTheme(): void {
-      const saved = typeof localStorage === 'undefined' ? null : localStorage.getItem(THEME_STORAGE_KEY)
+      const saved =
+        typeof localStorage === 'undefined' ? null : localStorage.getItem(THEME_STORAGE_KEY)
       const prefersDark =
         typeof window !== 'undefined' &&
         typeof window.matchMedia === 'function' &&

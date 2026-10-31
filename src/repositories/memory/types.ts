@@ -14,17 +14,12 @@ export class MemoryEntityTypeRepository implements EntityTypeRepository {
   async getByUniverse(universeId: string, scope?: EntityScope): Promise<EntityType[]> {
     return [...this.items.values()]
       .filter(
-        (type) =>
-          type.universeId === universeId && (scope === undefined || type.scope === scope),
+        (type) => type.universeId === universeId && (scope === undefined || type.scope === scope),
       )
       .map(cloneValue)
   }
 
-  async getByKey(
-    universeId: string,
-    scope: EntityScope,
-    key: string,
-  ): Promise<EntityType | null> {
+  async getByKey(universeId: string, scope: EntityScope, key: string): Promise<EntityType | null> {
     const found = [...this.items.values()].find(
       (type) => type.universeId === universeId && type.scope === scope && type.key === key,
     )
