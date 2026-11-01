@@ -32,7 +32,7 @@ interface GraphState {
   error: string | null
   /** 布局计算与落库进行中，用于禁用按钮、阻止重复触发。 */
   isLayouting: boolean
-  /** 一级布局快照，只存在内存，切换世界或再次布局时覆盖。 */
+  /** 一级布局快照，只存在内存：首次自动布局前保存，恢复、拖动或切换世界时清除。 */
   layoutSnapshot: LayoutSnapshot | null
 }
 
@@ -226,11 +226,16 @@ export const useGraphStore = defineStore('graph', {
       services.autosave.schedule(`node:${id}`, () => trackSave(save()))
     },
     async moveNode(id: string, position: NodePosition): Promise<void> {
+      if (!this.nodes.some((node) => node.id === id)) {
+        return
+      }
+      // 用户手动排布即视为放弃自动布局前的快照，撤销提示不能再把布局改回去
+      this.layoutSnapshot = null
       await this.updateNode(id, { position })
     },
     /**
-     * 自动布局：计算 → 存快照 → 一次性更新内存 → 单事务落库。
-     * 落库失败时把内存坐标回滚到布局前并抛出，由调用方提示用户。
+     * 自动布局：计算 → 首次布局前存快照 → 一次性更新内存 → 单事务落库。
+     * 连续布局只有第一次保存快照；落库失败时把内存坐标回滚到本次布局前并抛出，由调用方提示用户。
      */
     async applyLayout(mode: LayoutMode = 'force'): Promise<void> {
       if (this.isLayouting) {
@@ -253,18 +258,21 @@ export const useGraphStore = defineStore('graph', {
         }
         // 用户可能刚拖动过节点：先把排队的逐节点保存写完，旧坐标才不会晚于布局落库
         await drainNodeSaves()
-        const snapshot = positionsOf(this.nodes)
+        const beforeLayout = positionsOf(this.nodes)
         applyPositions(this.nodes, positions)
         try {
           const saved = await services.graph.updateNodePositions(universeId, positions)
           const byId = new Map(saved.map((node) => [node.id, node]))
           this.nodes = this.nodes.map((node) => byId.get(node.id) ?? node)
         } catch (error) {
-          applyPositions(this.nodes, snapshot)
+          applyPositions(this.nodes, beforeLayout)
           console.error('[graph] 自动布局落库失败', error)
           throw error
         }
-        this.layoutSnapshot = { universeId, positions: snapshot }
+        // 快照只记录第一次自动布局前的坐标，连续布局不覆盖
+        if (!this.layoutSnapshot) {
+          this.layoutSnapshot = { universeId, positions: beforeLayout }
+        }
       } finally {
         this.isLayouting = false
       }
@@ -279,13 +287,14 @@ export const useGraphStore = defineStore('graph', {
         return
       }
       const universeId = snapshot.universeId
-      const positions = pickPositions(this.nodes, snapshot.positions)
       this.isLayouting = true
       try {
         await drainNodeSaves()
         if (this.universeId !== universeId) {
           return
         }
+        // 等待保存期间节点可能已被删除或新建：落库前重新过滤，避免整批写入因缺失节点报错
+        const positions = pickPositions(this.nodes, snapshot.positions)
         const current = positionsOf(this.nodes)
         applyPositions(this.nodes, positions)
         try {

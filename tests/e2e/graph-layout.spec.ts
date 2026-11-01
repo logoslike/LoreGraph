@@ -218,6 +218,58 @@ for (const { mode, testId } of LAYOUT_MODES) {
 }
 
 test.describe('LG-207 恢复布局', () => {
+  test('力导向后再层级，恢复布局回到最初位置', async ({ page }) => {
+    await buildLayoutWorld(page)
+    const before = await storedPositions(page)
+
+    await runLayout(page, 'auto-layout-force-btn')
+    const forcePositions = await storedPositions(page)
+    // 第二次布局的提示与第一次同文案，不能靠 Toast 判断完成：等数据库坐标真正变化
+    await clickToolbarMenuItem(page, 'auto-layout-layered-btn')
+    await expect
+      .poll(async () => await storedPositions(page), {
+        timeout: 15_000,
+        message: '等待层级布局写入 IndexedDB 超时',
+      })
+      .not.toEqual(forcePositions)
+    await waitForViewportIdle(page)
+    const layered = await storedPositions(page)
+    expect(layered).not.toEqual(before)
+
+    await dismissToasts(page)
+    await clickToolbarMenuItem(page, 'restore-layout-btn')
+    await expect
+      .poll(async () => await storedPositions(page), {
+        timeout: 15_000,
+        message: '等待连续布局后的恢复写入 IndexedDB 超时',
+      })
+      .toEqual(before)
+    await waitForViewportIdle(page)
+
+    expectPositionsClose(await storedPositions(page), before)
+    await expect(page.getByTestId('lore-node')).toHaveCount(2)
+  })
+
+  test('连续两次自动布局只保留一条「已自动布局」提示', async ({ page }) => {
+    await buildLayoutWorld(page)
+    const layoutToasts = page.getByTestId('toast').filter({ hasText: '已自动布局' })
+
+    await runLayout(page, 'auto-layout-force-btn')
+    await expect(layoutToasts).toHaveCount(1)
+    const forcePositions = await storedPositions(page)
+
+    // 等第二次布局真正完成（坐标变化且视口动画结束）后再数提示，避免在旧提示上误判
+    await clickToolbarMenuItem(page, 'auto-layout-layered-btn')
+    await expect
+      .poll(async () => await storedPositions(page), {
+        timeout: 15_000,
+        message: '等待第二次布局写入 IndexedDB 超时',
+      })
+      .not.toEqual(forcePositions)
+    await waitForViewportIdle(page)
+    await expect(layoutToasts).toHaveCount(1)
+  })
+
   test('恢复布局把节点坐标还原到布局前（允许 1px 误差）', async ({ page }) => {
     await buildLayoutWorld(page)
     const before = await storedPositions(page)

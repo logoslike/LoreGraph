@@ -197,6 +197,8 @@ async function onAutoLayout(mode: LayoutMode): Promise<void> {
   await nextTick()
   await viewport.fitAll()
   ui.notify('已自动布局', {
+    // 连续布局只保留最后一条提示，撤销仍回到第一次布局前的位置
+    key: 'auto-layout',
     actionLabel: '撤销',
     duration: 8000,
     onAction: () => {

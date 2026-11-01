@@ -123,8 +123,8 @@ describe('graph store 自动布局', () => {
     expect(store.canRestoreLayout).toBe(false)
   })
 
-  it('快照只保留一级：再次布局会覆盖上一次的快照', async () => {
-    const { store } = await seedWorld()
+  it('连续布局不覆盖首次快照：力导向后再层级，恢复仍回到最初坐标', async () => {
+    const { universe, store } = await seedWorld()
     const original = positions(store)
 
     await store.applyLayout('force')
@@ -132,11 +132,59 @@ describe('graph store 自动布局', () => {
     await store.applyLayout('layered')
     const secondLayout = positions(store)
     expect(secondLayout).not.toEqual(firstLayout)
+    expect(secondLayout).not.toEqual(original)
+    expect(store.canRestoreLayout).toBe(true)
 
     await store.restoreLayout()
 
-    expect(positions(store)).toEqual(firstLayout)
-    expect(positions(store)).not.toEqual(original)
+    expect(positions(store)).toEqual(original)
+    expect(await persistedPositions(universe.id)).toEqual(original)
+    expect(store.canRestoreLayout).toBe(false)
+  })
+
+  it('布局后手动移动节点会清除快照，restoreLayout 变成空操作', async () => {
+    const { universe, store } = await seedWorld()
+    await store.applyLayout('force')
+    const target = store.nodes[0]
+
+    await store.moveNode(target.id, { x: 11, y: 22 })
+
+    expect(store.canRestoreLayout).toBe(false)
+    await expect(store.restoreLayout()).resolves.toBeUndefined()
+    expect(positions(store)[target.id]).toEqual({ x: 11, y: 22 })
+
+    await store.flush()
+    expect((await persistedPositions(universe.id))[target.id]).toEqual({ x: 11, y: 22 })
+  })
+
+  it('恢复时跳过已删除节点，保留快照之后新建节点的位置', async () => {
+    const { universe, store } = await seedWorld()
+    const original = positions(store)
+    await store.applyLayout('force')
+
+    const removed = store.nodes[0]
+    await store.deleteNode(removed.id)
+    const added = await store.createNode({
+      name: '布局后新增',
+      type: 'concept',
+      position: { x: 901, y: 902 },
+    })
+
+    await expect(store.restoreLayout()).resolves.toBeUndefined()
+
+    const restored = positions(store)
+    expect(restored[removed.id]).toBeUndefined()
+    expect(restored[added.id]).toEqual({ x: 901, y: 902 })
+    for (const node of store.nodes) {
+      if (node.id !== added.id) {
+        expect(restored[node.id]).toEqual(original[node.id])
+      }
+    }
+
+    const persisted = await persistedPositions(universe.id)
+    expect(persisted[removed.id]).toBeUndefined()
+    expect(persisted[added.id]).toEqual({ x: 901, y: 902 })
+    expect(store.canRestoreLayout).toBe(false)
   })
 
   it('切换世界后快照失效，restoreLayout 变成空操作', async () => {

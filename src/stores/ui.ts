@@ -9,10 +9,13 @@ export interface ToastOptions {
   actionLabel?: string
   onAction?: () => void
   duration?: number
+  /** 可选的替换键：同 key 的新通知会先移除旧通知，避免连续操作叠出多条。 */
+  key?: string
 }
 
 export interface UiToast {
   id: string
+  key?: string
   message: string
   variant: ToastVariant
   actionLabel?: string
@@ -95,8 +98,16 @@ export const useUiStore = defineStore('ui', {
     },
     /** 显示右下角通知；返回 toast id 便于手动关闭。 */
     notify(message: string, options: ToastOptions = {}): string {
+      if (options.key) {
+        for (const existing of [...this.toasts]) {
+          if (existing.key === options.key) {
+            this.dismissToast(existing.id)
+          }
+        }
+      }
       const toast: UiToast = {
         id: newId(),
+        key: options.key,
         message,
         variant: options.variant ?? 'info',
         actionLabel: options.actionLabel,
