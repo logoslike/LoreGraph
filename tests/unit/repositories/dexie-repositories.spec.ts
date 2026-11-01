@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Universe } from '@/models/universe'
 import { createDexieRepositories } from '@/repositories'
 import {
   buildEdge,
@@ -7,8 +8,13 @@ import {
   buildUniverse,
   createTestContext,
   idsOf,
+  putRawRecord,
   reopenTestDatabase,
 } from './test-db'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('Dexie 世界仓储', () => {
   it('支持创建、读取、更新与删除', async () => {
@@ -162,5 +168,93 @@ describe('Dexie 节点 / 关系 / 类型仓储', () => {
     expect(idsOf(await repos.edges.getByNodeId(a.id)).sort()).toEqual([ab.id, ca.id].sort())
     expect(idsOf(await repos.edges.getByNodeId(b.id))).toEqual([ab.id])
     expect(await repos.edges.getByNodeId('missing-node')).toEqual([])
+  })
+})
+describe('Dexie 旧数据兼容', () => {
+  it('缺少 description 字段的旧世界记录读取后描述为空字符串', async () => {
+    const { db, repos } = createTestContext()
+    const legacy: Omit<Universe, 'description'> = {
+      id: 'legacy-universe',
+      name: '旧版世界',
+      createdAt: 1_600_000_000_000,
+      updatedAt: 1_600_000_000_000,
+    }
+    await db.universes.put(legacy as Universe)
+
+    expect((await repos.universes.getById(legacy.id))?.description).toBe('')
+    const [listed] = await repos.universes.list()
+    expect(listed.description).toBe('')
+  })
+})
+
+describe('Dexie 列表逐行容错', () => {
+  it('跳过校验失败的行，其余记录照常返回，坏数据保留原样', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { db, repos } = createTestContext()
+    const world = buildUniverse()
+    await repos.universes.create(world)
+    const node = buildNode(world.id)
+    await repos.nodes.create(node)
+    const edge = buildEdge(world.id, { source: node.id, target: 'node-missing' })
+    await repos.edges.create(edge)
+    const type = buildEntityType(world.id, { key: 'character' })
+    await repos.types.create(type)
+
+    const brokenUniverse: Record<string, unknown> = {
+      ...buildUniverse(),
+      id: 'broken-universe',
+      name: '',
+    }
+    const brokenNode: Record<string, unknown> = { ...node, id: 'broken-node', type: 'Bad Key' }
+    const brokenEdge: Record<string, unknown> = {
+      ...edge,
+      id: 'broken-edge',
+      source: 'node-other',
+      relationType: 'Bad Key',
+    }
+    const brokenType: Record<string, unknown> = {
+      ...type,
+      id: 'broken-type',
+      key: 'broken-key',
+      color: 'red',
+    }
+    await putRawRecord(db, 'universes', brokenUniverse)
+    await putRawRecord(db, 'nodes', brokenNode)
+    await putRawRecord(db, 'edges', brokenEdge)
+    await putRawRecord(db, 'entityTypes', brokenType)
+
+    expect(idsOf(await repos.universes.list())).toEqual([world.id])
+    expect(idsOf(await repos.nodes.getByUniverse(world.id))).toEqual([node.id])
+    expect(idsOf(await repos.edges.getByUniverse(world.id))).toEqual([edge.id])
+    expect(idsOf(await repos.edges.getByNodeId(node.id))).toEqual([edge.id])
+    expect(idsOf(await repos.types.getByUniverse(world.id))).toEqual([type.id])
+
+    // 告警信息带表名与 id
+    const warnings = warn.mock.calls.map((call) => String(call[0]))
+    expect(warnings).toHaveLength(4)
+    const mentioned = (table: string, id: string): boolean =>
+      warnings.some((text) => text.includes(table) && text.includes(id))
+    expect(mentioned('universes', 'broken-universe')).toBe(true)
+    expect(mentioned('nodes', 'broken-node')).toBe(true)
+    expect(mentioned('edges', 'broken-edge')).toBe(true)
+    expect(mentioned('entityTypes', 'broken-type')).toBe(true)
+
+    // 坏数据仍保留在原表中，未被删除或改写
+    expect(await db.universes.get('broken-universe')).toEqual(brokenUniverse)
+    expect(await db.nodes.get('broken-node')).toEqual(brokenNode)
+    expect(await db.edges.get('broken-edge')).toEqual(brokenEdge)
+    expect(await db.entityTypes.get('broken-type')).toEqual(brokenType)
+  })
+
+  it('按 id 读取单条记录仍严格校验并报错，不静默跳过', async () => {
+    const { db, repos } = createTestContext()
+    await putRawRecord(db, 'universes', {
+      id: 'broken-universe',
+      name: '',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    await expect(repos.universes.getById('broken-universe')).rejects.toThrow()
   })
 })

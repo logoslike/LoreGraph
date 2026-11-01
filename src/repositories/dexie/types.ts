@@ -1,9 +1,10 @@
 import type { LoreDatabase } from '@/db/schema'
 import { EntityTypeSchema, type EntityScope, type EntityType } from '@/models/type-def'
 import type { EntityTypeRepository } from '@/repositories/types'
+import { parseRows } from './parse'
 import { sortEntityTypes } from './sort'
 
-/** Dexie 版实体类型仓储：写入与读取都经过 Zod 校验，按 order 升序返回。 */
+/** Dexie 版实体类型仓储：写入与按 id 读取都经过 Zod 校验，列表逐行容错并按 order 升序返回。 */
 export class DexieEntityTypeRepository implements EntityTypeRepository {
   constructor(private readonly db: LoreDatabase) {}
 
@@ -20,7 +21,7 @@ export class DexieEntityTypeRepository implements EntityTypeRepository {
             .where('[universeId+scope]')
             .equals([universeId, scope])
             .toArray()
-    return sortEntityTypes(rows).map((row) => EntityTypeSchema.parse(row))
+    return sortEntityTypes(parseRows('entityTypes', rows, EntityTypeSchema))
   }
 
   async getByKey(universeId: string, scope: EntityScope, key: string): Promise<EntityType | null> {

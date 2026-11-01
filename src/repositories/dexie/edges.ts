@@ -1,9 +1,10 @@
 import type { LoreDatabase } from '@/db/schema'
 import { LoreEdgeSchema, type LoreEdge } from '@/models/edge'
 import type { EdgeRepository } from '@/repositories/types'
+import { parseRows } from './parse'
 import { sortByCreatedAt } from './sort'
 
-/** Dexie 版关系仓储：写入与读取都经过 Zod 校验。 */
+/** Dexie 版关系仓储：写入与按 id 读取都经过 Zod 校验，列表逐行容错。 */
 export class DexieEdgeRepository implements EdgeRepository {
   constructor(private readonly db: LoreDatabase) {}
 
@@ -14,7 +15,7 @@ export class DexieEdgeRepository implements EdgeRepository {
 
   async getByUniverse(universeId: string): Promise<LoreEdge[]> {
     const rows = await this.db.edges.where('universeId').equals(universeId).toArray()
-    return sortByCreatedAt(rows).map((row) => LoreEdgeSchema.parse(row))
+    return sortByCreatedAt(parseRows('edges', rows, LoreEdgeSchema))
   }
 
   async getByNodeId(nodeId: string): Promise<LoreEdge[]> {
@@ -26,7 +27,7 @@ export class DexieEdgeRepository implements EdgeRepository {
     for (const edge of [...asSource, ...asTarget]) {
       unique.set(edge.id, edge)
     }
-    return sortByCreatedAt([...unique.values()]).map((edge) => LoreEdgeSchema.parse(edge))
+    return sortByCreatedAt(parseRows('edges', [...unique.values()], LoreEdgeSchema))
   }
 
   async create(edge: LoreEdge): Promise<LoreEdge> {

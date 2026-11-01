@@ -6,7 +6,7 @@ import { LoreNodeSchema, type LoreNode } from '@/models/node'
 import { EntityTypeSchema, type EntityType } from '@/models/type-def'
 import { UniverseSchema, type Universe } from '@/models/universe'
 import { createDexieRepositories } from '@/repositories'
-import type { Repositories } from '@/repositories/types'
+import type { Repositories, TableName } from '@/repositories/types'
 
 const FIXTURE_BASE_TIME = 1_700_000_000_000
 
@@ -44,6 +44,15 @@ export function reopenTestDatabase(db: LoreDatabase): LoreDatabase {
   const reopened = createLoreDatabase(db.name)
   openedDatabases.push(reopened)
   return reopened
+}
+
+/** 绕过仓储与 Zod，直接向指定表写入原始记录，用于构造旧数据或脏数据。 */
+export async function putRawRecord(
+  db: LoreDatabase,
+  table: TableName,
+  row: Record<string, unknown>,
+): Promise<void> {
+  await db.table(table).put(row)
 }
 
 /** 关闭并删除本文件创建的全部测试数据库。 */

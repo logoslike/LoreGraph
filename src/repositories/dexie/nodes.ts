@@ -1,9 +1,10 @@
 import type { LoreDatabase } from '@/db/schema'
 import { LoreNodeSchema, type LoreNode } from '@/models/node'
 import type { NodeRepository } from '@/repositories/types'
+import { parseRows } from './parse'
 import { sortByCreatedAt } from './sort'
 
-/** Dexie 版节点仓储：写入与读取都经过 Zod 校验，列表按创建时间稳定升序。 */
+/** Dexie 版节点仓储：写入与按 id 读取都经过 Zod 校验，列表逐行容错并按创建时间稳定升序。 */
 export class DexieNodeRepository implements NodeRepository {
   constructor(private readonly db: LoreDatabase) {}
 
@@ -14,7 +15,7 @@ export class DexieNodeRepository implements NodeRepository {
 
   async getByUniverse(universeId: string): Promise<LoreNode[]> {
     const rows = await this.db.nodes.where('universeId').equals(universeId).toArray()
-    return sortByCreatedAt(rows).map((row) => LoreNodeSchema.parse(row))
+    return sortByCreatedAt(parseRows('nodes', rows, LoreNodeSchema))
   }
 
   async create(node: LoreNode): Promise<LoreNode> {

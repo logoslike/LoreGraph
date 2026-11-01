@@ -1,15 +1,16 @@
 import type { LoreDatabase } from '@/db/schema'
 import { UniverseSchema, type Universe } from '@/models/universe'
 import type { UniverseRepository } from '@/repositories/types'
+import { parseRows } from './parse'
 import { sortByCreatedAt } from './sort'
 
-/** Dexie 版世界仓储：写入与读取都经过 Zod 校验。 */
+/** Dexie 版世界仓储：写入与按 id 读取都经过 Zod 校验，列表逐行容错。 */
 export class DexieUniverseRepository implements UniverseRepository {
   constructor(private readonly db: LoreDatabase) {}
 
   async list(): Promise<Universe[]> {
     const rows = await this.db.universes.toArray()
-    return sortByCreatedAt(rows).map((row) => UniverseSchema.parse(row))
+    return sortByCreatedAt(parseRows('universes', rows, UniverseSchema))
   }
 
   async getById(id: string): Promise<Universe | null> {
