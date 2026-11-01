@@ -5,8 +5,10 @@ import {
   createNodeViaToolbar,
   createTwoSeparatedNodes,
   createUniverse,
+  dragNodeBy,
   useEmptyLibrary,
   waitForPersistedNode,
+  waitForViewportIdle,
 } from './helpers'
 
 /** 空世界工作区（跳过首启示例世界）。 */
@@ -21,9 +23,65 @@ async function buildTwoNodes(page: Page): Promise<void> {
   await createTwoSeparatedNodes(page, '澜舟', '墨鸦')
 }
 
-/** 两个节点 + 一条已确认的关系。 */
+/**
+ * 把节点拖到画布上的指定屏幕位置。
+ * 节点落点带 ±70 随机抖动、拖动后还会吸附到 16px 网格，只做相对偏移的拖拽无法保证
+ * 两个节点最终的距离；这里按目标点反复校正（拖拽本身也可能丢失），误差收敛到一个网格内。
+ */
+async function moveNodeToScreenPoint(
+  page: Page,
+  name: string,
+  target: { x: number; y: number },
+): Promise<void> {
+  const node = page.getByTestId('lore-node').filter({ hasText: name })
+  await expect(node).toBeVisible()
+  // 等画布就绪（节点已注册拖拽、视口动画结束）再按坐标拖拽，避免拖动被丢弃
+  await waitForViewportIdle(page)
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const box = await node.boundingBox()
+    if (box === null) {
+      throw new Error(`画布上找不到节点「${name}」`)
+    }
+    const dx = target.x - (box.x + box.width / 2)
+    const dy = target.y - (box.y + box.height / 2)
+    if (Math.abs(dx) <= 20 && Math.abs(dy) <= 20) {
+      return
+    }
+    await dragNodeBy(page, name, dx, dy)
+  }
+  throw new Error(`节点「${name}」没有移动到预期位置`)
+}
+
+/**
+ * 在空世界里建两个节点，分别固定到画布中心左上 / 右下的确定位置，再适应视图。
+ * 两个节点相距足够远，包围盒不会重叠——一旦重叠，点击与悬停会命中压在上面的另一个节点，
+ * 表现为随机的误选中或「元素拦截指针事件」超时。
+ */
+async function buildSeparatedNodes(
+  page: Page,
+  firstName: string,
+  secondName: string,
+): Promise<void> {
+  await emptyWorkspace(page)
+  const canvasBox = await page.getByTestId('graph-canvas').boundingBox()
+  if (canvasBox === null) {
+    throw new Error('画布不可见，无法放置节点')
+  }
+  const centerX = canvasBox.x + canvasBox.width / 2
+  const centerY = canvasBox.y + canvasBox.height / 2
+
+  await createNodeViaToolbar(page, firstName)
+  await moveNodeToScreenPoint(page, firstName, { x: centerX - 230, y: centerY - 130 })
+  await createNodeViaToolbar(page, secondName)
+  await moveNodeToScreenPoint(page, secondName, { x: centerX + 230, y: centerY + 130 })
+
+  await page.getByTestId('fit-view-btn').click()
+  await waitForViewportIdle(page)
+}
+
+/** 两个节点 + 一条已确认的关系（节点落点确定且互不遮挡，便于按坐标点击）。 */
 async function buildConnectedNodes(page: Page): Promise<void> {
-  await buildTwoNodes(page)
+  await buildSeparatedNodes(page, '澜舟', '墨鸦')
   await connectNodes(page, '澜舟', '墨鸦')
   await page.getByTestId('relation-type-select').selectOption({ index: 1 })
   await page.getByTestId('relation-label-input').fill('亦师亦友')
@@ -98,11 +156,21 @@ test.describe('LG-005 删除节点与级联关系', () => {
   test('Delete 快捷键删除选中节点同样级联关系', async ({ page }) => {
     await buildConnectedNodes(page)
 
-    await page.getByTestId('lore-node').filter({ hasText: '墨鸦' }).click()
+    const target = page.getByTestId('lore-node').filter({ hasText: '墨鸦' })
+    await target.click()
+    // 先确认选中的确实是目标节点，Delete 才会作用在它身上而不是另一个节点
+    await expect(target).toHaveAttribute('data-selected', 'true')
+    await expect(page.getByTestId('lore-node').filter({ hasText: '澜舟' })).toHaveAttribute(
+      'data-selected',
+      'false',
+    )
     await expect(page.getByTestId('inspector-name')).toHaveValue('墨鸦')
+
     await page.keyboard.press('Delete')
 
     await expect(page.getByTestId('lore-node').filter({ hasText: '墨鸦' })).toHaveCount(0)
+    // 只删掉目标节点：另一个节点仍在画布上，关联关系随节点一起级联删除
+    await expect(page.getByTestId('lore-node').filter({ hasText: '澜舟' })).toBeVisible()
     await expect(page.locator('.vue-flow__edge')).toHaveCount(0)
   })
 })
