@@ -23,8 +23,9 @@ test.describe('LG-001 世界 CRUD', () => {
 
     // 新建时填写的简介在 Inspector 世界概览中可见
     await expect(page.getByTestId('inspector-empty')).toContainText(description)
-    // 导入只保留在世界列表页，工作区不应出现导入入口（避免误以为导入到当前世界）
-    await expect(page.getByRole('button', { name: '导入 JSON' })).toHaveCount(0)
+    // 工作区的导入入口在检查器里，与「导出世界」并列，由预览对话框决定新建还是合并
+    await expect(page.getByTestId('export-world-btn')).toBeVisible()
+    await expect(page.getByTestId('import-world-btn')).toBeVisible()
 
     await backToUniverses(page)
     // 列表页按钮明确表达「新建世界」，而不是导入到某个现有世界

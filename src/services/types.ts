@@ -2,7 +2,12 @@ import type { Universe } from '@/models/universe'
 import type { EntityScope, EntityType } from '@/models/type-def'
 import type { LoreNode, NodePosition } from '@/models/node'
 import type { LoreEdge } from '@/models/edge'
-import type { LoreExport } from '@/models/export-format'
+import type {
+  LoreFileFormat,
+  LoreGraphFile,
+  LoreImportFile,
+  LoreUniverseFile,
+} from '@/models/export-format'
 
 /** 自定义属性值。 */
 export type PropertyValue = string | number | boolean | null
@@ -73,6 +78,11 @@ export interface GraphService {
   createNode(input: NodeCreateInput): Promise<LoreNode>
   updateNode(id: string, patch: NodePatch): Promise<LoreNode>
   moveNode(id: string, position: NodePosition): Promise<LoreNode>
+  /** 批量更新同一世界下多个节点的坐标，在单个事务内写入（自动布局、布局恢复用）。 */
+  updateNodePositions(
+    universeId: string,
+    positions: Record<string, NodePosition>,
+  ): Promise<LoreNode[]>
   deleteNode(id: string): Promise<DeleteNodeSnapshot>
   restoreNode(snapshot: DeleteNodeSnapshot): Promise<void>
   createEdge(input: EdgeCreateInput): Promise<LoreEdge>
@@ -106,19 +116,90 @@ export interface TypeService {
   remove(id: string): Promise<void>
 }
 
-/** 解析结果：成功时返回校验后的导出数据，失败时给出可读的问题列表。 */
-export type ParseResult = { ok: true; data: LoreExport } | { ok: false; issues: string[] }
+/** 导入模式：新建世界，或合并进已有世界。 */
+export type ImportMode = 'new-universe' | 'merge'
 
-/** 导入服务：解析并校验导出文件，导入时总是新建世界。 */
+export interface ImportOptions {
+  mode: ImportMode
+  /** merge 模式的目标世界 id。 */
+  targetUniverseId?: string
+}
+
+/** 预览中的类型摘要。 */
+export interface ImportTypeSummary {
+  scope: EntityScope
+  key: string
+  label: string
+  color: string
+}
+
+/** 类型冲突：同 scope+key 但名称或颜色不同，提交时以现有类型为准。 */
+export interface ImportTypeConflict {
+  scope: EntityScope
+  key: string
+  incoming: { label: string; color: string }
+  existing: { label: string; color: string }
+}
+
+/** 分析阶段确定的提交计划，供 commitImport 使用；有错误时为 null。 */
+export interface ImportPlan {
+  file: LoreImportFile
+  mode: ImportMode
+  targetUniverseId: string | null
+  /** merge 时目标世界的状态指纹，提交前用于检测世界是否已变化。 */
+  targetFingerprint: string | null
+  /** 源类型 id -> 复用的目标类型 id；未列出的类型需要新建。 */
+  reusedTypeIds: Record<string, string>
+}
+
+/** 导入预览：analyzeImport 的只读结果，可用于展示与提交。 */
+export interface ImportPreview {
+  /** 文件格式无法识别时为 null。 */
+  format: LoreFileFormat | null
+  mode: ImportMode
+  targetUniverseId: string | null
+  /** 世界文件中的世界名；图谱片段为 null。 */
+  universeName: string | null
+  nodeCount: number
+  edgeCount: number
+  newTypes: ImportTypeSummary[]
+  reusedTypes: ImportTypeSummary[]
+  typeConflicts: ImportTypeConflict[]
+  duplicateNodeNames: string[]
+  warnings: string[]
+  errors: string[]
+  canImport: boolean
+  plan: ImportPlan | null
+}
+
+/** 导入结果：写入的目标世界与各类写入数量。 */
+export interface ImportResult {
+  universeId: string
+  universeName: string
+  createdUniverse: boolean
+  createdTypes: number
+  reusedTypes: number
+  createdNodes: number
+  createdEdges: number
+}
+
+/** 导入服务：先只读分析并给出预览，再把计划一次性写入。 */
 export interface ImportService {
-  parse(raw: string): ParseResult
-  import(data: LoreExport): Promise<Universe>
+  analyzeImport(raw: string, options: ImportOptions): Promise<ImportPreview>
+  commitImport(preview: ImportPreview): Promise<ImportResult>
+}
+
+/** 图谱片段导出结果：omittedEdgeCount 是一端在选中集合外而被丢弃的关系数。 */
+export interface GraphExport {
+  data: LoreGraphFile
+  omittedEdgeCount: number
 }
 
 /** 导出服务。 */
 export interface ExportService {
-  toExport(universeId: string): Promise<LoreExport>
-  download(data: LoreExport, filename?: string): void
+  exportUniverse(universeId: string): Promise<LoreUniverseFile>
+  exportGraph(universeId: string, nodeIds: readonly string[]): Promise<GraphExport>
+  download(data: LoreImportFile, filename?: string): void
 }
 
 /** 防抖自动保存。 */

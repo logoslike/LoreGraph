@@ -3,6 +3,7 @@ import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } f
 import {
   Panel,
   VueFlow,
+  useNodesInitialized,
   useVueFlow,
   type Connection,
   type Edge,
@@ -24,6 +25,7 @@ import RelationDialog from './RelationDialog.vue'
 import TypeManagerDialog from './TypeManagerDialog.vue'
 import type { LoreNodeData } from './types'
 import { useGraphViewport } from '@/composables/useGraphViewport'
+import type { LayoutMode } from '@/services/layout.service'
 import type { LoreEdge } from '@/models/edge'
 import type { LoreNode as LoreNodeModel } from '@/models/node'
 import { useGraphStore } from '@/stores/graph'
@@ -43,6 +45,14 @@ const ui = useUiStore()
  */
 const flow = useVueFlow()
 const viewport = useGraphViewport(flow)
+/** 所有节点都量到尺寸后 Vue Flow 才会报 true，用于布局/导入后等待新节点可被 fitView 计入。 */
+const nodesInitialized = useNodesInitialized()
+
+/** 画布根元素：尺寸变化时用它保持中心内容不动。 */
+const canvasRef = ref<HTMLElement | null>(null)
+let stopObserveResize: (() => void) | null = null
+/** 等待 nodesInitialized 后再适应视图的 watcher，卸载时兜底停止。 */
+let pendingFitStop: (() => void) | null = null
 
 const createOpen = ref(false)
 const relationOpen = ref(false)
@@ -131,6 +141,92 @@ function miniMapNodeColor(node: GraphNode): string {
 
 function fitView(): void {
   void viewport.fitAll()
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function stopPendingFit(): void {
+  pendingFitStop?.()
+  pendingFitStop = null
+}
+
+/**
+ * 新节点还没量出尺寸时 fitView 会漏算它们：先等一拍让 Vue Flow 收下新节点（此时尺寸还是 0），
+ * 再等 nodesInitialized 变回 true 才适应视图。
+ */
+function fitAllWhenNodesReady(): void {
+  stopPendingFit()
+  void nextTick(() => {
+    if (graph.nodes.length === 0) {
+      return
+    }
+    if (nodesInitialized.value) {
+      void viewport.fitAll()
+      return
+    }
+    pendingFitStop = watch(nodesInitialized, (ready) => {
+      if (!ready) {
+        return
+      }
+      stopPendingFit()
+      void viewport.fitAll()
+    })
+  })
+}
+
+/**
+ * 自动布局：store 只回滚坐标并抛出，提示由这里负责。
+ * 布局写回后 Vue Flow 的节点位置在 post flush 才更新，先等一拍再 fitView，否则会按旧坐标算包围盒。
+ */
+async function onAutoLayout(mode: LayoutMode): Promise<void> {
+  if (graph.isLayouting || graph.nodes.length === 0) {
+    return
+  }
+  try {
+    await graph.applyLayout(mode)
+  } catch (error) {
+    ui.notify(`自动布局失败：${formatError(error)}`, { variant: 'danger' })
+    return
+  }
+  // 计算期间可能切换了世界，结果作废，此时不会留下快照
+  if (!graph.canRestoreLayout) {
+    return
+  }
+  await nextTick()
+  await viewport.fitAll()
+  ui.notify('已自动布局', {
+    actionLabel: '撤销',
+    duration: 8000,
+    onAction: () => {
+      void restoreLayout()
+    },
+  })
+}
+
+/** 恢复到上一次自动布局前的坐标。 */
+async function restoreLayout(): Promise<void> {
+  if (graph.isLayouting || !graph.canRestoreLayout) {
+    return
+  }
+  try {
+    await graph.restoreLayout()
+  } catch (error) {
+    ui.notify(`恢复布局失败：${formatError(error)}`, { variant: 'danger' })
+    return
+  }
+  await nextTick()
+  await viewport.fitAll()
+}
+
+function onRestoreLayout(): void {
+  void restoreLayout()
+}
+
+/** 图谱片段合并导入成功后节点变多，重新适应视图。 */
+function onGraphImported(): void {
+  fitAllWhenNodesReady()
 }
 
 function zoomIn(): void {
@@ -256,11 +352,16 @@ function autoFit(): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  // 窗口缩放或左右面板开合时保持画布中心的内容不动，不打断用户当前的平移缩放
+  stopObserveResize = viewport.preserveCenterOnResize(canvasRef.value)
   autoFit()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  stopObserveResize?.()
+  stopObserveResize = null
+  stopPendingFit()
 })
 
 watch(
@@ -273,7 +374,7 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
 </script>
 
 <template>
-  <div class="graph-canvas" data-testid="graph-canvas">
+  <div ref="canvasRef" class="graph-canvas" data-testid="graph-canvas">
     <VueFlow
       :nodes="flowNodes"
       :edges="flowEdges"
@@ -303,12 +404,17 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
       <Panel position="top-left">
         <GraphToolbar
           :can-delete="canDelete"
+          :layouting="graph.isLayouting"
+          :can-restore-layout="graph.canRestoreLayout"
           @create-node="openCreateDialog"
           @manage-types="typeManagerOpen = true"
           @fit-view="fitView"
           @zoom-in="zoomIn"
           @zoom-out="zoomOut"
           @delete-selected="deleteSelection"
+          @auto-layout="onAutoLayout"
+          @restore-layout="onRestoreLayout"
+          @graph-imported="onGraphImported"
         />
       </Panel>
     </VueFlow>

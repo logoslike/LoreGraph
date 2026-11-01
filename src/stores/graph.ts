@@ -3,6 +3,7 @@ import type { LoreEdge } from '@/models/edge'
 import type { LoreNode, NodePosition } from '@/models/node'
 import { services } from '@/services'
 import { LoreGraphError } from '@/services/errors'
+import { computeLayout, type LayoutMode } from '@/services/layout.service'
 import type { EdgePatch, NodePatch } from '@/services/types'
 import { pickDefined } from '@/services/utils'
 import { useUiStore } from './ui'
@@ -29,12 +30,24 @@ interface GraphState {
   selectedEdgeId: string | null
   loading: boolean
   error: string | null
+  /** 布局计算与落库进行中，用于禁用按钮、阻止重复触发。 */
+  isLayouting: boolean
+  /** 一级布局快照，只存在内存，切换世界或再次布局时覆盖。 */
+  layoutSnapshot: LayoutSnapshot | null
+}
+
+/** 自动布局前的坐标快照。 */
+interface LayoutSnapshot {
+  universeId: string
+  positions: Record<string, NodePosition>
 }
 
 /** 待合并的节点补丁：同一节点的连续修改合并后一次落库。 */
 const pendingPatches = new Map<string, NodePatch>()
 /** 首次修改前的节点快照，用于保存失败时回滚。 */
 const rollbackNodes = new Map<string, LoreNode>()
+/** 正在执行的节点保存：布局前等它们结束，避免旧坐标晚于布局写入。 */
+const inflightSaves = new Set<Promise<void>>()
 
 function cloneNode(node: LoreNode): LoreNode {
   return {
@@ -54,6 +67,48 @@ function applyNodePatch(node: LoreNode, patch: NodePatch): void {
   node.updatedAt = Date.now()
 }
 
+/** 取出全部节点的坐标副本。 */
+function positionsOf(nodes: readonly LoreNode[]): Record<string, NodePosition> {
+  return Object.fromEntries(nodes.map((node) => [node.id, { ...node.position }]))
+}
+
+/** 只保留当前世界仍然存在的节点，已删除的节点跳过。 */
+function pickPositions(
+  nodes: readonly LoreNode[],
+  positions: Record<string, NodePosition>,
+): Record<string, NodePosition> {
+  const ids = new Set(nodes.map((node) => node.id))
+  return Object.fromEntries(Object.entries(positions).filter(([id]) => ids.has(id)))
+}
+
+/** 把坐标写回内存节点，未出现在映射里的节点保持原样。 */
+function applyPositions(nodes: readonly LoreNode[], positions: Record<string, NodePosition>): void {
+  for (const node of nodes) {
+    const position = positions[node.id]
+    if (position) {
+      node.position = { ...position }
+    }
+  }
+}
+
+/** 登记一个正在落库的节点保存，供布局前等待。 */
+function trackSave(task: Promise<void>): Promise<void> {
+  inflightSaves.add(task)
+  void task.then(
+    () => inflightSaves.delete(task),
+    () => inflightSaves.delete(task),
+  )
+  return task
+}
+
+/** 等逐节点自动保存全部落地：先触发防抖队列，再等已经开始的保存。 */
+async function drainNodeSaves(): Promise<void> {
+  await services.autosave.flush()
+  while (inflightSaves.size > 0) {
+    await Promise.allSettled([...inflightSaves])
+  }
+}
+
 /** 当前世界的图谱数据与选中状态。 */
 export const useGraphStore = defineStore('graph', {
   state: (): GraphState => ({
@@ -64,6 +119,8 @@ export const useGraphStore = defineStore('graph', {
     selectedEdgeId: null,
     loading: false,
     error: null,
+    isLayouting: false,
+    layoutSnapshot: null,
   }),
   getters: {
     selectedNode(state): LoreNode | null {
@@ -88,6 +145,10 @@ export const useGraphStore = defineStore('graph', {
       (state) =>
       (source: string, target: string): LoreEdge | null =>
         state.edges.find((edge) => edge.source === source && edge.target === target) ?? null,
+    /** 存在属于当前世界的布局快照时才可恢复。 */
+    canRestoreLayout(state): boolean {
+      return state.layoutSnapshot !== null && state.layoutSnapshot.universeId === state.universeId
+    },
   },
   actions: {
     async load(universeId: string): Promise<void> {
@@ -103,6 +164,7 @@ export const useGraphStore = defineStore('graph', {
         this.edges = edges
         this.selectedNodeId = null
         this.selectedEdgeId = null
+        this.layoutSnapshot = null
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error)
       } finally {
@@ -117,8 +179,11 @@ export const useGraphStore = defineStore('graph', {
       this.selectedEdgeId = null
       this.loading = false
       this.error = null
+      this.isLayouting = false
+      this.layoutSnapshot = null
       pendingPatches.clear()
       rollbackNodes.clear()
+      inflightSaves.clear()
     },
     async createNode(input: NodeDraft): Promise<LoreNode> {
       const universeId = this.requireUniverseId()
@@ -136,7 +201,7 @@ export const useGraphStore = defineStore('graph', {
       }
       applyNodePatch(node, patch)
       pendingPatches.set(id, { ...pendingPatches.get(id), ...pickDefined(patch) })
-      services.autosave.schedule(`node:${id}`, async () => {
+      const save = async (): Promise<void> => {
         const merged = pendingPatches.get(id) ?? {}
         pendingPatches.delete(id)
         try {
@@ -157,10 +222,85 @@ export const useGraphStore = defineStore('graph', {
           rollbackNodes.delete(id)
           console.error('[graph] 节点保存失败', error)
         }
-      })
+      }
+      services.autosave.schedule(`node:${id}`, () => trackSave(save()))
     },
     async moveNode(id: string, position: NodePosition): Promise<void> {
       await this.updateNode(id, { position })
+    },
+    /**
+     * 自动布局：计算 → 存快照 → 一次性更新内存 → 单事务落库。
+     * 落库失败时把内存坐标回滚到布局前并抛出，由调用方提示用户。
+     */
+    async applyLayout(mode: LayoutMode = 'force'): Promise<void> {
+      if (this.isLayouting) {
+        return
+      }
+      const universeId = this.requireUniverseId()
+      if (this.nodes.length === 0) {
+        return
+      }
+      this.isLayouting = true
+      try {
+        const positions = await computeLayout(
+          this.nodes.map((node) => ({ id: node.id })),
+          this.edges.map((edge) => ({ source: edge.source, target: edge.target })),
+          mode,
+        )
+        // 计算期间可能切换了世界，结果作废
+        if (this.universeId !== universeId) {
+          return
+        }
+        // 用户可能刚拖动过节点：先把排队的逐节点保存写完，旧坐标才不会晚于布局落库
+        await drainNodeSaves()
+        const snapshot = positionsOf(this.nodes)
+        applyPositions(this.nodes, positions)
+        try {
+          const saved = await services.graph.updateNodePositions(universeId, positions)
+          const byId = new Map(saved.map((node) => [node.id, node]))
+          this.nodes = this.nodes.map((node) => byId.get(node.id) ?? node)
+        } catch (error) {
+          applyPositions(this.nodes, snapshot)
+          console.error('[graph] 自动布局落库失败', error)
+          throw error
+        }
+        this.layoutSnapshot = { universeId, positions: snapshot }
+      } finally {
+        this.isLayouting = false
+      }
+    },
+    /** 恢复到上一次自动布局前的坐标；成功后清空快照。 */
+    async restoreLayout(): Promise<void> {
+      if (this.isLayouting) {
+        return
+      }
+      const snapshot = this.layoutSnapshot
+      if (!snapshot || snapshot.universeId !== this.universeId) {
+        return
+      }
+      const universeId = snapshot.universeId
+      const positions = pickPositions(this.nodes, snapshot.positions)
+      this.isLayouting = true
+      try {
+        await drainNodeSaves()
+        if (this.universeId !== universeId) {
+          return
+        }
+        const current = positionsOf(this.nodes)
+        applyPositions(this.nodes, positions)
+        try {
+          const saved = await services.graph.updateNodePositions(universeId, positions)
+          const byId = new Map(saved.map((node) => [node.id, node]))
+          this.nodes = this.nodes.map((node) => byId.get(node.id) ?? node)
+        } catch (error) {
+          applyPositions(this.nodes, current)
+          console.error('[graph] 布局恢复落库失败', error)
+          throw error
+        }
+        this.layoutSnapshot = null
+      } finally {
+        this.isLayouting = false
+      }
     },
     async deleteNode(id: string): Promise<void> {
       const snapshot = await services.graph.deleteNode(id)

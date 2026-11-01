@@ -157,29 +157,28 @@ describe('LoreGraph Phase 0 冒烟测试', () => {
     const services = createTestServices()
     const { universe, hero, city, edge } = await seedWorld(services)
 
-    const exported = await services.exporter.toExport(universe.id)
-    expect(exported.format).toBe('loregraph')
+    const exported = await services.exporter.exportUniverse(universe.id)
+    expect(exported.format).toBe('loregraph.universe')
     expect(exported.formatVersion).toBe(1)
 
-    const parsed = services.importer.parse(JSON.stringify(exported))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) {
-      return
-    }
+    const preview = await services.importer.analyzeImport(JSON.stringify(exported), {
+      mode: 'new-universe',
+    })
+    expect(preview.canImport).toBe(true)
 
-    const imported = await services.importer.import(parsed.data)
-    expect(imported.id).not.toBe(universe.id)
-    expect(imported.name).toBe('穹顶之下（导入）')
+    const imported = await services.importer.commitImport(preview)
+    expect(imported.universeId).not.toBe(universe.id)
+    expect(imported.universeName).toBe('穹顶之下（导入）')
 
     const [sourceTypes, importedTypes] = await Promise.all([
       services.types.list(universe.id),
-      services.types.list(imported.id),
+      services.types.list(imported.universeId),
     ])
     const signature = (list: typeof sourceTypes) =>
       list.map((type) => `${type.scope}:${type.key}:${type.label}:${type.color}`).sort()
     expect(signature(importedTypes)).toEqual(signature(sourceTypes))
 
-    const importedNodes = await services.graph.listNodes(imported.id)
+    const importedNodes = await services.graph.listNodes(imported.universeId)
     expect(importedNodes).toHaveLength(2)
     expect(importedNodes.map((item) => item.id)).not.toContain(hero.id)
     expect(importedNodes.map((item) => item.name).sort()).toEqual([hero.name, city.name].sort())
@@ -188,7 +187,7 @@ describe('LoreGraph Phase 0 冒烟测试', () => {
     expect(importedHero?.description).toBe(hero.description)
     expect(importedHero?.position).toEqual(hero.position)
 
-    const importedEdges = await services.graph.listEdges(imported.id)
+    const importedEdges = await services.graph.listEdges(imported.universeId)
     expect(importedEdges).toHaveLength(1)
     expect(importedEdges[0].id).not.toBe(edge.id)
     expect(importedEdges[0].relationType).toBe(edge.relationType)
@@ -199,11 +198,11 @@ describe('LoreGraph Phase 0 冒烟测试', () => {
     // 引用完整性错误要带字段路径
     const broken = JSON.parse(JSON.stringify(exported)) as typeof exported
     broken.edges[0].source = 'missing-node'
-    const rejected = services.importer.parse(JSON.stringify(broken))
-    expect(rejected.ok).toBe(false)
-    if (!rejected.ok) {
-      expect(rejected.issues.join('\n')).toContain('edges.0.source')
-    }
+    const rejected = await services.importer.analyzeImport(JSON.stringify(broken), {
+      mode: 'new-universe',
+    })
+    expect(rejected.canImport).toBe(false)
+    expect(rejected.errors.join('\n')).toContain('edges.0.source')
   })
 
   it('autosave 在 400ms 后触发，并可用 flushKey 立即落库', async () => {

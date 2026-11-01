@@ -149,14 +149,18 @@ export class UniverseServiceImpl implements UniverseService {
   async seedSample(): Promise<Universe> {
     const url = `${import.meta.env.BASE_URL}${SAMPLE_UNIVERSE_PATH}`
     const raw = await fetchSampleUniverse(url)
-    const parsed = this.importer.parse(raw)
-    if (!parsed.ok) {
-      throw new LoreGraphError(`示例世界数据无效：${parsed.issues.join('；')}`)
+    const preview = await this.importer.analyzeImport(raw, { mode: 'new-universe' })
+    if (!preview.canImport) {
+      throw new LoreGraphError(`示例世界数据无效：${preview.errors.join('；')}`)
     }
-    const universe = await this.importer.import(parsed.data)
-    // 示例世界不是用户主动导入，恢复原始名称（import 会追加「（导入）」）。
-    if (universe.name !== parsed.data.universe.name) {
-      return await this.update(universe.id, { name: parsed.data.universe.name })
+    const imported = await this.importer.commitImport(preview)
+    // 示例世界不是用户主动导入，恢复原始名称（commitImport 会追加「（导入）」）。
+    if (preview.universeName !== null && preview.universeName !== imported.universeName) {
+      return await this.update(imported.universeId, { name: preview.universeName })
+    }
+    const universe = await this.repos.universes.getById(imported.universeId)
+    if (!universe) {
+      throw new LoreGraphError('示例世界创建失败')
     }
     return universe
   }

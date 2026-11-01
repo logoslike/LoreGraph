@@ -1,4 +1,6 @@
-import { expect, type Page } from '@playwright/test'
+import { mkdir, readFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { expect, type Download, type Page } from '@playwright/test'
 
 /** 首启标记：存在时跳过自动载入示例世界，获得完全空的世界列表。 */
 const FIRST_RUN_KEY = 'loregraph.firstRunSeeded'
@@ -91,7 +93,9 @@ export async function dragNodeBy(page: Page, name: string, dx: number, dy: numbe
  * 用 requestAnimationFrame 轮询，不引入固定 sleep。
  */
 export async function waitForViewportIdle(page: Page): Promise<void> {
-  const pane = page.locator('.vue-flow__transformationpane')
+  // 限定在当前画布内查找：全局选择器在画布被隐藏/主区塌成 0 宽时会命中不可见元素，
+  // 报错只显示 toBeVisible 失败，掩盖真正原因。
+  const pane = page.getByTestId('graph-canvas').locator('.vue-flow__transformationpane')
   await expect(pane).toBeVisible()
   await pane.evaluate((element) => {
     return new Promise<void>((resolve) => {
@@ -253,4 +257,75 @@ export async function waitForPersistedNode(
       { timeout: 15_000, message: '等待节点写入 IndexedDB 超时' },
     )
     .not.toHaveLength(0)
+}
+/** 打开图谱工具栏的「更多」下拉菜单（布局与数据操作都收在这里）。 */
+export async function openGraphMoreMenu(page: Page): Promise<void> {
+  await page.getByTestId('more-menu-btn').click()
+  await expect(page.getByTestId('more-menu')).toBeVisible()
+}
+
+/** 在导入预览对话框中确认导入，等待对话框关闭。 */
+export async function confirmImportPreview(page: Page): Promise<void> {
+  const dialog = page.getByTestId('import-preview-dialog')
+  await expect(dialog).toBeVisible()
+  await page.getByTestId('import-preview-confirm-btn').click()
+  await expect(dialog).toBeHidden()
+}
+
+/** 保存下载文件到测试输出目录并解析为 JSON。 */
+export async function readDownloadJson(
+  download: Download,
+  filePath: string,
+): Promise<Record<string, unknown>> {
+  await mkdir(dirname(filePath), { recursive: true })
+  await download.saveAs(filePath)
+  return JSON.parse(await readFile(filePath, 'utf8')) as Record<string, unknown>
+}
+
+/**
+ * 通过工具栏导出图谱片段：打开导出对话框，按名称勾选节点后下载。
+ * 返回下载文件路径与解析后的内容。
+ */
+export async function exportGraphFragment(
+  page: Page,
+  filePath: string,
+  nodeNames: string[],
+): Promise<{ file: string; data: Record<string, unknown> }> {
+  await openGraphMoreMenu(page)
+  await page.getByTestId('export-graph-btn').click()
+  await expect(page.getByTestId('graph-export-dialog')).toBeVisible()
+
+  const search = page.getByTestId('graph-export-search-input')
+  for (const name of nodeNames) {
+    await search.fill(name)
+    const row = page.getByTestId('graph-export-node-item').filter({ hasText: name })
+    await expect(row).toHaveCount(1)
+    await row.getByTestId('graph-export-node-checkbox').check()
+  }
+  await search.fill('')
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('graph-export-confirm-btn').click(),
+  ])
+  await expect(page.getByTestId('graph-export-dialog')).toBeHidden()
+  const data = await readDownloadJson(download, filePath)
+  return { file: filePath, data }
+}
+
+/** 通过工具栏导入图谱片段文件，等到导入预览对话框出现。 */
+export async function importGraphFragment(page: Page, filePath: string): Promise<void> {
+  const chooser = page.waitForEvent('filechooser')
+  await openGraphMoreMenu(page)
+  await page.getByTestId('import-graph-btn').click()
+  await (await chooser).setFiles(filePath)
+  await expect(page.getByTestId('import-preview-dialog')).toBeVisible()
+}
+
+/** 在世界概览中导入文件，等到导入预览对话框出现。 */
+export async function importWorldViaInspector(page: Page, filePath: string): Promise<void> {
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByTestId('import-world-btn').click()
+  await (await chooser).setFiles(filePath)
+  await expect(page.getByTestId('import-preview-dialog')).toBeVisible()
 }

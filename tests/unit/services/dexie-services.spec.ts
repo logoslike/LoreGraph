@@ -154,27 +154,26 @@ describe('Dexie 上的世界服务', () => {
     const services = setup()
     const { universe, hero, city, edge } = await seedWorld(services)
 
-    const exported = await services.exporter.toExport(universe.id)
-    expect(exported.format).toBe('loregraph')
+    const exported = await services.exporter.exportUniverse(universe.id)
+    expect(exported.format).toBe('loregraph.universe')
     expect(exported.formatVersion).toBe(1)
 
-    const parsed = services.importer.parse(JSON.stringify(exported))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) {
-      return
-    }
+    const preview = await services.importer.analyzeImport(JSON.stringify(exported), {
+      mode: 'new-universe',
+    })
+    expect(preview.canImport).toBe(true)
 
-    const imported = await services.importer.import(parsed.data)
-    expect(imported.id).not.toBe(universe.id)
-    expect(imported.name).toBe('穹顶之下（导入）')
+    const imported = await services.importer.commitImport(preview)
+    expect(imported.universeId).not.toBe(universe.id)
+    expect(imported.universeName).toBe('穹顶之下（导入）')
 
     const signature = (types: EntityType[]) =>
       types.map((type) => `${type.scope}:${type.key}:${type.label}:${type.color}`).sort()
-    expect(signature(await services.types.list(imported.id))).toEqual(
+    expect(signature(await services.types.list(imported.universeId))).toEqual(
       signature(await services.types.list(universe.id)),
     )
 
-    const importedNodes = await services.graph.listNodes(imported.id)
+    const importedNodes = await services.graph.listNodes(imported.universeId)
     expect(importedNodes).toHaveLength(2)
     const importedHero = importedNodes.find((node) => node.name === hero.name)
     const importedCity = importedNodes.find((node) => node.name === city.name)
@@ -183,7 +182,7 @@ describe('Dexie 上的世界服务', () => {
     expect(importedHero?.properties).toEqual(hero.properties)
     expect(importedHero?.position).toEqual(hero.position)
 
-    const importedEdges = await services.graph.listEdges(imported.id)
+    const importedEdges = await services.graph.listEdges(imported.universeId)
     expect(importedEdges).toHaveLength(1)
     expect(importedEdges[0].id).not.toBe(edge.id)
     expect(importedEdges[0].relationType).toBe(edge.relationType)
@@ -199,30 +198,29 @@ describe('Dexie 上的世界服务', () => {
   it('非法 JSON 与引用缺失都会被拒绝，问题信息带字段路径', async () => {
     const services = setup()
     const { universe } = await seedWorld(services)
-    const exported = await services.exporter.toExport(universe.id)
+    const exported = await services.exporter.exportUniverse(universe.id)
 
-    const syntax = services.importer.parse('{ 这不是合法 JSON')
-    expect(syntax.ok).toBe(false)
-    if (!syntax.ok) {
-      expect(syntax.issues[0]).toContain('JSON 解析失败')
-    }
+    const syntax = await services.importer.analyzeImport('{ 这不是合法 JSON', {
+      mode: 'new-universe',
+    })
+    expect(syntax.canImport).toBe(false)
+    expect(syntax.errors[0]).toContain('JSON 解析失败')
 
-    const malformed = services.importer.parse(
+    const malformed = await services.importer.analyzeImport(
       JSON.stringify({ ...exported, nodes: 'not-an-array' }),
+      { mode: 'new-universe' },
     )
-    expect(malformed.ok).toBe(false)
-    if (!malformed.ok) {
-      expect(malformed.issues.join('\n')).toContain('nodes')
-    }
+    expect(malformed.canImport).toBe(false)
+    expect(malformed.errors.join('\n')).toContain('nodes')
 
     const broken = JSON.parse(JSON.stringify(exported)) as typeof exported
     broken.edges[0].source = 'missing-node'
-    const rejected = services.importer.parse(JSON.stringify(broken))
-    expect(rejected.ok).toBe(false)
-    if (!rejected.ok) {
-      expect(rejected.issues.join('\n')).toContain('edges.0.source')
-      expect(await services.graph.listEdges(universe.id)).toHaveLength(1)
-    }
+    const rejected = await services.importer.analyzeImport(JSON.stringify(broken), {
+      mode: 'new-universe',
+    })
+    expect(rejected.canImport).toBe(false)
+    expect(rejected.errors.join('\n')).toContain('edges.0.source')
+    expect(await services.graph.listEdges(universe.id)).toHaveLength(1)
   })
 
   it('重复关系、自连关系与端点缺失都会被拒绝', async () => {
@@ -260,5 +258,30 @@ describe('Dexie 上的世界服务', () => {
     expect(missingEndpoint).toBeInstanceOf(GraphError)
 
     expect(await services.graph.listEdges(universe.id)).toHaveLength(1)
+  })
+})
+describe('Dexie 上的世界描述', () => {
+  it('描述创建后重新读取一致，更新后再次读取也一致', async () => {
+    const services = setup()
+    const description = '一片被潮汐反复冲刷的海上文明。'
+    const created = await services.universes.create({ name: '潮汐残卷', description })
+    expect(created.description).toBe(description)
+    expect((await services.universes.get(created.id))?.description).toBe(description)
+
+    const edited = '改后的简介：三代君主与一场未熄的火。'
+    await services.universes.update(created.id, { description: edited })
+    expect((await services.universes.get(created.id))?.description).toBe(edited)
+    expect((await services.universes.list())[0].description).toBe(edited)
+  })
+
+  it('空描述创建与清空后往返都为空字符串', async () => {
+    const services = setup()
+    const created = await services.universes.create({ name: '无简介世界' })
+    expect(created.description).toBe('')
+    expect((await services.universes.get(created.id))?.description).toBe('')
+
+    await services.universes.update(created.id, { description: '临时简介' })
+    await services.universes.update(created.id, { description: '' })
+    expect((await services.universes.get(created.id))?.description).toBe('')
   })
 })

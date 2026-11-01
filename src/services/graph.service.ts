@@ -58,6 +58,35 @@ export class GraphServiceImpl implements GraphService {
     return await this.updateNode(id, { position })
   }
 
+  /** 批量坐标写入：一次读取、一次事务、一次 bulkPut，避免自动布局触发 N 次落库。 */
+  async updateNodePositions(
+    universeId: string,
+    positions: Record<string, NodePosition>,
+  ): Promise<LoreNode[]> {
+    const ids = Object.keys(positions)
+    if (ids.length === 0) {
+      return []
+    }
+    const existing = await this.repos.nodes.getByUniverse(universeId)
+    const byId = new Map(existing.map((node) => [node.id, node]))
+    const timestamp = now()
+    const updated = ids.map((id) => {
+      const node = byId.get(id)
+      if (!node) {
+        throw new LoreGraphError('节点不存在或已被删除')
+      }
+      return LoreNodeSchema.parse({
+        ...node,
+        position: positions[id],
+        updatedAt: timestamp,
+      })
+    })
+    await this.repos.tx.run(['nodes'], async () => {
+      await this.repos.nodes.bulkPut(updated)
+    })
+    return updated
+  }
+
   async deleteNode(id: string): Promise<DeleteNodeSnapshot> {
     const node = await this.repos.nodes.getById(id)
     if (!node) {

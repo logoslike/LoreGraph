@@ -1,6 +1,10 @@
 import type { LoreEdge } from '@/models/edge'
-import type { LoreExport } from '@/models/export-format'
-import { LORE_EXPORT_FORMAT, LORE_FORMAT_VERSION } from '@/models/export-format'
+import type { LoreGraphFile, LoreUniverseFile } from '@/models/export-format'
+import {
+  LORE_FORMAT_VERSION,
+  LORE_GRAPH_FORMAT,
+  LORE_UNIVERSE_FORMAT,
+} from '@/models/export-format'
 import type { LoreNode } from '@/models/node'
 import type { EntityType } from '@/models/type-def'
 import type { Universe } from '@/models/universe'
@@ -85,16 +89,30 @@ export function makeEdge(overrides: Partial<LoreEdge> = {}): LoreEdge {
   }
 }
 
-/** 一份完整的合法导出文件：1 个世界、2 个类型、2 个节点、1 条关系。 */
-export function makeExport(overrides: Partial<LoreExport> = {}): LoreExport {
+/** 一份完整的合法世界文件：1 个世界、2 个类型、2 个节点、1 条关系。 */
+export function makeExport(overrides: Partial<LoreUniverseFile> = {}): LoreUniverseFile {
   return {
-    format: LORE_EXPORT_FORMAT,
+    format: LORE_UNIVERSE_FORMAT,
     formatVersion: LORE_FORMAT_VERSION,
     exportedAt: TS,
     universe: makeUniverse(),
     types: [makeNodeType(), makeRelationType()],
     nodes: [makeNode(), makeNode({ id: 'node-2', name: '墨鸦', position: { x: 300, y: 160 } })],
     edges: [makeEdge()],
+    ...overrides,
+  }
+}
+
+/** 图谱片段夹具：默认包含两个节点与它们之间唯一的关系。 */
+export function makeGraphExport(overrides: Partial<LoreGraphFile> = {}): LoreGraphFile {
+  const source = makeExport()
+  return {
+    format: LORE_GRAPH_FORMAT,
+    formatVersion: LORE_FORMAT_VERSION,
+    exportedAt: TS,
+    types: source.types,
+    nodes: source.nodes,
+    edges: source.edges,
     ...overrides,
   }
 }

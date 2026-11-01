@@ -20,6 +20,7 @@ function handleAction(toast: UiToast): void {
       :key="toast.id"
       class="pointer-events-auto flex w-full max-w-md items-center justify-between gap-3 rounded-lg border bg-surface px-4 py-2.5 text-fg shadow-lg"
       :class="toast.variant === 'danger' ? 'border-danger/40' : 'border-border'"
+      data-testid="toast"
     >
       <p class="text-sm">{{ toast.message }}</p>
       <div class="flex shrink-0 items-center gap-1">
@@ -27,6 +28,7 @@ function handleAction(toast: UiToast): void {
           v-if="toast.actionLabel"
           type="button"
           class="rounded px-2 py-1 text-xs font-medium text-accent hover:bg-surface-2"
+          data-testid="toast-action-btn"
           @click="handleAction(toast)"
         >
           {{ toast.actionLabel }}
@@ -35,6 +37,7 @@ function handleAction(toast: UiToast): void {
           type="button"
           class="rounded px-2 py-1 text-xs text-muted hover:bg-surface-2"
           aria-label="关闭通知"
+          data-testid="toast-dismiss-btn"
           @click="ui.dismissToast(toast.id)"
         >
           ✕

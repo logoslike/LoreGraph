@@ -3,13 +3,15 @@ import { onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { Download, Globe, Moon, Pencil, Plus, Sparkles, Sun, Trash, Upload } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue'
+import UniverseFormDialog from '@/components/universe/UniverseFormDialog.vue'
 import { useTheme } from '@/composables/useTheme'
 import { useToast } from '@/composables/useToast'
 import type { Universe } from '@/models/universe'
 import { services } from '@/services'
+import type { ImportPreview } from '@/services/types'
 import { useUniverseStore } from '@/stores/universe'
 
 /** 首启标记：只在第一次没有世界时自动创建示例世界。 */
@@ -22,24 +24,25 @@ const { isDark, toggleTheme } = useTheme()
 
 const bootstrapping = ref(true)
 const createOpen = ref(false)
-const createName = ref('')
-const createDescription = ref('')
-const createError = ref(false)
 const busy = ref(false)
 
 const editTarget = ref<Universe | null>(null)
-const editName = ref('')
-const editDescription = ref('')
-const editError = ref(false)
 
 const deleteTarget = ref<Universe | null>(null)
-const importIssues = ref<string[]>([])
+const importPreview = ref<ImportPreview | null>(null)
+const importOpen = ref(false)
+const importAnalyzing = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 interface UniverseStats {
   nodes: number
   edges: number
   types: number
+}
+
+interface UniverseFormPayload {
+  name: string
+  description: string
 }
 
 const stats = ref<Record<string, UniverseStats>>({})
@@ -127,21 +130,13 @@ async function onSeedSample(): Promise<void> {
 }
 
 function openCreate(): void {
-  createName.value = ''
-  createDescription.value = ''
-  createError.value = false
   createOpen.value = true
 }
 
-async function onCreate(): Promise<void> {
-  const name = createName.value.trim()
-  if (name === '') {
-    createError.value = true
-    return
-  }
+async function onCreate(payload: UniverseFormPayload): Promise<void> {
   busy.value = true
   try {
-    const created = await universes.create(name, createDescription.value.trim())
+    const created = await universes.create(payload.name, payload.description)
     createOpen.value = false
     await refreshStats()
     toast.info(`已创建世界「${created.name}」`)
@@ -155,24 +150,16 @@ async function onCreate(): Promise<void> {
 
 function openEdit(target: Universe): void {
   editTarget.value = target
-  editName.value = target.name
-  editDescription.value = target.description
-  editError.value = false
 }
 
-async function onEdit(): Promise<void> {
+async function onEdit(payload: UniverseFormPayload): Promise<void> {
   const target = editTarget.value
-  const name = editName.value.trim()
   if (!target) {
-    return
-  }
-  if (name === '') {
-    editError.value = true
     return
   }
   busy.value = true
   try {
-    await universes.updateInfo(target.id, { name, description: editDescription.value.trim() })
+    await universes.updateInfo(target.id, payload)
     editTarget.value = null
     toast.info('世界信息已更新')
   } catch (error) {
@@ -206,7 +193,7 @@ async function onDelete(): Promise<void> {
 
 async function onExport(target: Universe): Promise<void> {
   try {
-    const data = await services.exporter.toExport(target.id)
+    const data = await services.exporter.exportUniverse(target.id)
     services.exporter.download(data)
     toast.info(`已导出世界「${target.name}」`)
   } catch (error) {
@@ -215,10 +202,10 @@ async function onExport(target: Universe): Promise<void> {
 }
 
 function openImport(): void {
-  importIssues.value = []
   fileInput.value?.click()
 }
 
+/** 选择文件后只做只读分析，具体导入在预览对话框中确认。 */
 async function onImportFile(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -226,19 +213,28 @@ async function onImportFile(event: Event): Promise<void> {
   if (!file) {
     return
   }
+  importAnalyzing.value = true
   try {
     const raw = await file.text()
-    const parsed = services.importer.parse(raw)
-    if (!parsed.ok) {
-      importIssues.value = parsed.issues
-      return
-    }
-    const imported = await services.importer.import(parsed.data)
-    await loadUniverses()
-    toast.info(`已导入世界「${imported.name}」`)
+    importPreview.value = await services.importer.analyzeImport(raw, { mode: 'new-universe' })
+    importOpen.value = true
   } catch (error) {
-    importIssues.value = [formatError(error)]
+    toast.danger(`读取导入文件失败：${formatError(error)}`)
+  } finally {
+    importAnalyzing.value = false
   }
+}
+
+/** 关闭预览对话框并清掉上一次的分析结果。 */
+function onImportClose(): void {
+  importOpen.value = false
+  importPreview.value = null
+}
+
+/** 导入成功后刷新世界列表与统计。 */
+async function onImported(): Promise<void> {
+  onImportClose()
+  await loadUniverses()
 }
 
 onMounted(async () => {
@@ -276,6 +272,7 @@ onMounted(async () => {
             variant="secondary"
             size="sm"
             title="从 JSON 文件新建一个世界，不会修改现有世界"
+            data-testid="import-universe-btn"
             @click="openImport"
           >
             <Upload :size="16" />
@@ -393,81 +390,32 @@ onMounted(async () => {
       </div>
     </main>
 
-    <BaseDialog :open="createOpen" title="新建世界" width="420px" @close="createOpen = false">
-      <label class="block">
-        <span class="mb-1 block text-sm text-muted">世界名称</span>
-        <input
-          v-model="createName"
-          type="text"
-          maxlength="120"
-          placeholder="例如：余烬王朝"
-          autofocus
-          data-testid="universe-name-input"
-          class="w-full rounded-md border bg-bg px-3 py-1.5 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          :class="createError ? 'border-danger' : 'border-border'"
-          @input="createError = false"
-          @keydown.enter="onCreate"
-        />
-        <span v-if="createError" class="mt-1 block text-xs text-danger">名称不能为空</span>
-      </label>
-      <label class="mt-3 block">
-        <span class="mb-1 block text-sm text-muted">世界简介（可选）</span>
-        <textarea
-          v-model="createDescription"
-          rows="3"
-          maxlength="20000"
-          placeholder="一句话介绍这个世界，会显示在世界卡片与检查器的世界概览上"
-          data-testid="universe-description-input"
-          class="w-full resize-y rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        ></textarea>
-        <span class="mt-1 block text-xs text-muted">简介可选，之后也能在世界卡片上修改。</span>
-      </label>
-      <template #footer>
-        <BaseButton variant="secondary" size="sm" @click="createOpen = false">取消</BaseButton>
-        <BaseButton size="sm" :disabled="busy" data-testid="create-universe-btn" @click="onCreate"
-          >创建并进入</BaseButton
-        >
-      </template>
-    </BaseDialog>
+    <UniverseFormDialog
+      :open="createOpen"
+      mode="create"
+      :busy="busy"
+      :test-ids="{
+        name: 'universe-name-input',
+        description: 'universe-description-input',
+        submit: 'create-universe-btn',
+      }"
+      @close="createOpen = false"
+      @submit="onCreate"
+    />
 
-    <BaseDialog
+    <UniverseFormDialog
       :open="editTarget !== null"
-      title="编辑世界"
-      width="420px"
+      mode="edit"
+      :initial-name="editTarget?.name ?? ''"
+      :initial-description="editTarget?.description ?? ''"
+      :busy="busy"
+      :test-ids="{
+        name: 'rename-universe-input',
+        description: 'rename-universe-description-input',
+      }"
       @close="editTarget = null"
-    >
-      <label class="block">
-        <span class="mb-1 block text-sm text-muted">世界名称</span>
-        <input
-          v-model="editName"
-          type="text"
-          maxlength="120"
-          autofocus
-          data-testid="rename-universe-input"
-          class="w-full rounded-md border bg-bg px-3 py-1.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          :class="editError ? 'border-danger' : 'border-border'"
-          @input="editError = false"
-          @keydown.enter="onEdit"
-        />
-        <span v-if="editError" class="mt-1 block text-xs text-danger">名称不能为空</span>
-      </label>
-      <label class="mt-3 block">
-        <span class="mb-1 block text-sm text-muted">世界简介（可选）</span>
-        <textarea
-          v-model="editDescription"
-          rows="4"
-          maxlength="20000"
-          placeholder="一句话介绍这个世界，会显示在世界卡片与检查器的世界概览上"
-          data-testid="rename-universe-description-input"
-          class="w-full resize-y rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        ></textarea>
-        <span class="mt-1 block text-xs text-muted">留空则清除简介。</span>
-      </label>
-      <template #footer>
-        <BaseButton variant="secondary" size="sm" @click="editTarget = null">取消</BaseButton>
-        <BaseButton size="sm" :disabled="busy" @click="onEdit">保存</BaseButton>
-      </template>
-    </BaseDialog>
+      @submit="onEdit"
+    />
 
     <ConfirmDialog
       :open="deleteTarget !== null"
@@ -483,22 +431,12 @@ onMounted(async () => {
       @close="deleteTarget = null"
     />
 
-    <BaseDialog
-      :open="importIssues.length > 0"
-      title="导入失败"
-      width="560px"
-      @close="importIssues = []"
-    >
-      <p class="mb-2 text-sm text-muted">文件未通过校验，请检查以下问题后重试：</p>
-      <ul
-        class="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border bg-surface p-2 text-xs text-muted"
-        data-testid="import-issues"
-      >
-        <li v-for="(issue, index) in importIssues" :key="index">{{ issue }}</li>
-      </ul>
-      <template #footer>
-        <BaseButton variant="secondary" size="sm" @click="importIssues = []">关闭</BaseButton>
-      </template>
-    </BaseDialog>
+    <ImportPreviewDialog
+      :open="importOpen"
+      :preview="importPreview"
+      :analyzing="importAnalyzing"
+      @close="onImportClose"
+      @imported="onImported"
+    />
   </div>
 </template>

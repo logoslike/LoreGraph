@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { Download, PanelRightClose } from '@lucide/vue'
+import { ref } from 'vue'
+import { Download, PanelRightClose, Upload } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue'
 import EdgeEditor from '@/components/editor/EdgeEditor.vue'
 import NodeEditor from '@/components/editor/NodeEditor.vue'
 import { useToast } from '@/composables/useToast'
+import { LORE_GRAPH_FORMAT } from '@/models/export-format'
 import { services } from '@/services'
+import type { ImportMode, ImportOptions, ImportPreview, ImportResult } from '@/services/types'
 import { useGraphStore } from '@/stores/graph'
 import { useTypesStore } from '@/stores/types'
 import { useUiStore } from '@/stores/ui'
@@ -18,6 +22,13 @@ const types = useTypesStore()
 const universe = useUniverseStore()
 const toast = useToast()
 
+const importInput = ref<HTMLInputElement | null>(null)
+const importOpen = ref(false)
+const importAnalyzing = ref(false)
+const importRaw = ref('')
+const importMode = ref<ImportMode>('new-universe')
+const importPreview = ref<ImportPreview | null>(null)
+
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -28,12 +39,99 @@ async function onExport(): Promise<void> {
     return
   }
   try {
-    const data = await services.exporter.toExport(current.id)
+    const data = await services.exporter.exportUniverse(current.id)
     services.exporter.download(data)
     toast.info('已导出世界 JSON')
   } catch (error) {
     toast.danger(`导出失败：${formatError(error)}`)
   }
+}
+
+function openImportPicker(): void {
+  importInput.value?.click()
+}
+
+/** 读取文件后打开预览；图谱片段会自动切到合并模式再重新分析。 */
+async function onImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) {
+    return
+  }
+  try {
+    importRaw.value = await file.text()
+  } catch (error) {
+    toast.danger(`读取文件失败：${formatError(error)}`)
+    return
+  }
+  importMode.value = 'new-universe'
+  importPreview.value = null
+  importOpen.value = true
+  await analyzeImport()
+}
+
+function importOptions(mode: ImportMode): ImportOptions {
+  const targetUniverseId = universe.current?.id ?? graph.universeId ?? undefined
+  return { mode, targetUniverseId: mode === 'merge' ? targetUniverseId : undefined }
+}
+
+async function analyzeImport(): Promise<void> {
+  importAnalyzing.value = true
+  try {
+    const preview = await services.importer.analyzeImport(
+      importRaw.value,
+      importOptions(importMode.value),
+    )
+    // 图谱片段只能合并：直接切到合并并重新分析，避免先闪一条误导性的错误
+    if (preview.format === LORE_GRAPH_FORMAT && importMode.value !== 'merge') {
+      importMode.value = 'merge'
+      importPreview.value = await services.importer.analyzeImport(
+        importRaw.value,
+        importOptions('merge'),
+      )
+      return
+    }
+    importPreview.value = preview
+  } catch (error) {
+    toast.danger(`导入分析失败：${formatError(error)}`)
+    importPreview.value = null
+    importOpen.value = false
+  } finally {
+    importAnalyzing.value = false
+  }
+}
+
+async function onImportModeChange(mode: ImportMode): Promise<void> {
+  if (mode === importMode.value) {
+    return
+  }
+  importMode.value = mode
+  await analyzeImport()
+}
+
+/** 导入成功后刷新当前世界（新建世界时只刷新列表）。 */
+async function onImported(result: ImportResult): Promise<void> {
+  importOpen.value = false
+  importPreview.value = null
+  try {
+    if (result.createdUniverse) {
+      await universe.loadAll()
+      return
+    }
+    await Promise.all([
+      graph.load(result.universeId),
+      types.load(result.universeId),
+      universe.loadAll(),
+    ])
+  } catch (error) {
+    toast.danger(`刷新世界数据失败：${formatError(error)}`)
+  }
+}
+
+function onImportClose(): void {
+  importOpen.value = false
+  importPreview.value = null
 }
 </script>
 
@@ -100,21 +198,56 @@ async function onExport(): Promise<void> {
           </div>
         </dl>
 
-        <div class="space-y-1">
-          <BaseButton
-            variant="secondary"
-            class="w-full"
-            :disabled="!universe.current"
-            @click="onExport"
-          >
-            <Download :size="16" />
-            导出 JSON
-          </BaseButton>
-          <p class="text-xs text-muted">导出当前世界为 JSON 备份或分享；导入请在世界列表页进行。</p>
+        <div class="space-y-1.5">
+          <div class="grid grid-cols-2 gap-2">
+            <BaseButton
+              variant="secondary"
+              size="sm"
+              :disabled="!universe.current"
+              data-testid="export-world-btn"
+              @click="onExport"
+            >
+              <Download :size="14" />
+              导出世界
+            </BaseButton>
+            <BaseButton
+              variant="secondary"
+              size="sm"
+              :disabled="!universe.current"
+              data-testid="import-world-btn"
+              @click="openImportPicker"
+            >
+              <Upload :size="14" />
+              导入世界
+            </BaseButton>
+          </div>
+          <p class="text-xs text-muted">
+            导出当前世界为 JSON 备份；导入时可选择新建世界或合并到当前世界。
+          </p>
         </div>
 
         <p class="text-xs text-muted">选中画布中的节点或关系后，可在此编辑其名称、类型与属性。</p>
       </div>
     </div>
+
+    <input
+      ref="importInput"
+      type="file"
+      accept="application/json,.json"
+      class="hidden"
+      data-testid="inspector-import-input"
+      @change="onImportFile"
+    />
+
+    <ImportPreviewDialog
+      :open="importOpen"
+      :preview="importPreview"
+      :target-name="universe.current?.name ?? ''"
+      selectable-mode
+      :analyzing="importAnalyzing"
+      @close="onImportClose"
+      @mode-change="onImportModeChange"
+      @imported="onImported"
+    />
   </aside>
 </template>

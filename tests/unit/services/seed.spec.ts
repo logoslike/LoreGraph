@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LORE_EXPORT_FORMAT, LORE_FORMAT_VERSION, type LoreExport } from '@/models/export-format'
+import {
+  LORE_FORMAT_VERSION,
+  LORE_UNIVERSE_FORMAT,
+  type LoreUniverseFile,
+} from '@/models/export-format'
 import { createServices } from '@/services'
 import { LoreGraphError } from '@/services/errors'
 import type { Services } from '@/services/types'
@@ -9,9 +13,9 @@ import { captureError, createTestContext, idsOf } from '../repositories/test-db'
 const SAMPLE_TIMESTAMP = 1_700_000_000_000
 
 /** public/examples/emberfall.json 尚未生成时的内联最小样本（结构与真实文件一致）。 */
-function buildInlineSample(): LoreExport {
+function buildInlineSample(): LoreUniverseFile {
   return {
-    format: LORE_EXPORT_FORMAT,
+    format: LORE_UNIVERSE_FORMAT,
     formatVersion: LORE_FORMAT_VERSION,
     exportedAt: SAMPLE_TIMESTAMP,
     universe: {
