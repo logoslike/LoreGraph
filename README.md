@@ -44,9 +44,10 @@ All screenshots are captured at 1440×900.
   edges, edit the relation type, label, and properties. When nothing is selected it shows the
   world description, world statistics, and world export/import actions.
 - **Automatic layout.** Lay out the whole graph in one click with elkjs — force-directed (the
-  default) or layered top-down. Layout only changes coordinates; a one-level in-memory snapshot
-  can be undone from the success toast or restored later via 更多 → 恢复布局前位置. The snapshot
-  is not persisted, so reloading loses it.
+  default) or layered top-down. Layout only changes coordinates; the positions from before the
+  first layout stay in memory and can be undone from the success toast or restored later via
+  更多 → 恢复布局前位置, even after further layouts. The snapshot is not persisted, so reloading
+  loses it.
 - **Stable viewport.** Resizing the window or opening/closing the sidebar and inspector keeps the
   content at the centre of the canvas, and the view refits after a layout, a restore, or a graph
   snippet import.

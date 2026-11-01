@@ -30,8 +30,9 @@ and files written by v0.1 are no longer importable. 世界导出格式标识由 
   overview (export a world; import a world as new or merged), and the graph toolbar's 更多 menu
   (import/export a graph snippet).
 - Automatic layout with elkjs: force-directed (default) and layered top-down modes. Only
-  coordinates change; a one-level in-memory snapshot can be undone from the success toast or
-  restored from 更多 → 恢复布局前位置.
+  coordinates change; the positions from before the first layout stay in memory and can be
+  undone from the success toast or restored from 更多 → 恢复布局前位置, even after further
+  layouts.
 - Viewport stability: resizing the window or opening/closing the sidebar and inspector keeps the
   content at the canvas centre; the view refits after a layout, a restore, and a snippet import.
 - Tolerant list reads from IndexedDB: each row is validated and invalid rows are skipped with a
@@ -47,6 +48,16 @@ and files written by v0.1 are no longer importable. 世界导出格式标识由 
   world: the inspector can merge a file into the current world.
 - The canvas keeps its centre on panel/window resize instead of re-fitting, which would interrupt
   the user's pan and zoom.
+
+### Fixed
+
+- Dialogs sat in the top-left corner of the viewport instead of being centred: Tailwind's
+  preflight resets `margin` to `0`, overriding the `margin: auto` native modal dialogs rely
+  on. They are centred again and scroll their body internally when the content is taller than the
+  viewport.
+- Collapsing the sidebar or the inspector could shrink the canvas to zero width: the grid relied
+  on auto-placement, and the hidden panel left the main area in a 0-wide first column. The three
+  panels now occupy named grid areas.
 
 ### Removed
 

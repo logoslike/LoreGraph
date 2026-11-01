@@ -203,9 +203,10 @@ v0.1 introduced a deliberately small undo surface; v0.2 adds layout restore.
   store shows a toast with an **撤销** action for 8 seconds; restoring re-inserts the node and
   edges.
 - **Deleting an edge** returns the deleted edge and offers the same toast-based undo.
-- **Automatic layout** keeps a one-level snapshot of the coordinates it replaced (see
-  [Automatic layout](#automatic-layout)). The success toast offers 撤销 for 8 seconds, and the
-  更多 menu keeps 恢复布局前位置 for as long as the snapshot exists.
+- **Automatic layout** keeps the coordinates from just before the _first_ automatic layout
+  (see [Automatic layout](#automatic-layout)); later layouts leave that snapshot alone, so both
+  paths return to the state before the first layout. The success toast offers 撤销 for 8 seconds,
+  and the 更多 menu keeps 恢复布局前位置 for as long as the snapshot exists.
 - **Deleting a universe**, deleting a type, and editing properties are _not_ undoable. Type
   deletion is blocked while references exist, and universe deletion requires explicit
   confirmation in the UI.
@@ -229,14 +230,20 @@ malformed data cannot make ELK fail. The function only returns integer top-left 
 
 1. compute positions, and discard them if the active world changed meanwhile;
 2. flush pending per-node autosaves so an older drag cannot land after the layout;
-3. keep a one-level in-memory snapshot of the current positions;
+3. remember the current positions as the restore snapshot — only when no snapshot exists yet, so
+   the snapshot always holds the state from before the first automatic layout;
 4. write every position in one transaction (`updateNodePositions`); if that write fails, the
-   in-memory positions are rolled back and the error is surfaced as a toast.
+   in-memory positions are rolled back, no snapshot is recorded, and the error is surfaced as a
+   toast.
 
 Layout never changes names, descriptions, properties, types, or edges. The snapshot powers the
-撤销 action in the success toast (8 seconds) and 恢复布局前位置 in the menu; restoring writes the
-snapshot back and then clears it. It lives only in the store, so reloading the page or switching
-worlds drops it, and a second layout overwrites it.
+撤销 action in the success toast (8 seconds) and 恢复布局前位置 in the menu. Consecutive layouts
+show only one 已自动布局 toast — the newest replaces the older one — and its 撤销 still returns to
+the positions from before the first layout. Restoring writes the snapshot back and then clears
+it. The snapshot is also dropped when the user drags a node (`moveNode`: manual placement
+abandons the automatic result) and when the world changes or the graph is reloaded. Nodes deleted
+after the snapshot are skipped; nodes created after it keep their current positions. It lives
+only in the store, so a page reload loses it.
 
 The canvas fits the view after a layout, a restore, or a snippet import. `useGraphViewport` also
 keeps the content at the canvas centre when the window resizes or the side panels open or close:
