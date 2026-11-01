@@ -41,8 +41,15 @@ All screenshots are captured at 1440×900.
   概念) and six relation types (隶属于, 结盟, 位于, 参与, 导致, 相关).
 - **Inspector.** Edit a node's name, type, long-form description, and arbitrary custom
   properties (string, number, or boolean); browse its incident relations and jump to them. For
-  edges, edit the relation type, label, and properties. When nothing is selected it shows world
-  statistics and an export action.
+  edges, edit the relation type, label, and properties. When nothing is selected it shows the
+  world description, world statistics, and world export/import actions.
+- **Automatic layout.** Lay out the whole graph in one click with elkjs — force-directed (the
+  default) or layered top-down. Layout only changes coordinates; a one-level in-memory snapshot
+  can be undone from the success toast or restored later via 更多 → 恢复布局前位置. The snapshot
+  is not persisted, so reloading loses it.
+- **Stable viewport.** Resizing the window or opening/closing the sidebar and inspector keeps the
+  content at the centre of the canvas, and the view refits after a layout, a restore, or a graph
+  snippet import.
 - **Search and filters.** Find nodes by name (case-insensitive substring), browse the matches
   in the sidebar node list, see them highlighted on the canvas, and show or hide nodes by type
   with per-type counts.
@@ -53,16 +60,23 @@ All screenshots are captured at 1440×900.
 - **Safe deletion.** Deleting a node removes its relations atomically and offers an undo toast.
   A type that is still in use cannot be deleted.
 - **Universe management.** Create, edit, and delete worlds (name + description) from a card
-  library with per-world node/edge/type counts; each world has its own types, nodes, and
-  relations.
+  library with per-world node/edge/type counts; the description also appears in the card and the
+  inspector's world overview. Each world has its own types, nodes, and relations.
 - **Sample world.** An original Chinese fantasy world (烬海纪元) is bundled and loaded
   automatically the first time you open the app when the library is empty, so it is never an
   empty canvas; it can also be loaded from the empty state.
-- **JSON import and export.** Import creates a new world from the universe list page (it never
-  touches existing worlds); export a world from its card or from the inspector. Files are
-  `.loregraph.json`, so a world can be moved between browsers or backed up, and import problems
-  are listed with field paths instead of failing silently (see
-  [the data format](docs/data-format.md)).
+- **JSON import and export.** Two kinds of `.loregraph.json` files: a **world file**
+  (`format: "loregraph.universe"`) with everything in one world, and a **graph snippet**
+  (`format: "loregraph.graph"`) with just the selected nodes, their internal relations, and the
+  types they use. Import is always two steps — analyze the file, review counts, types, conflicts,
+  duplicate names, and warnings, then commit — and supports importing a world file as a new world
+  (from the library or the inspector) or merging it into the current world (from the inspector).
+  Graph snippets are imported from the graph toolbar's 更多 menu and always merge. Merging never
+  overwrites: types are reused by `scope + key`, nodes and relations get fresh ids, and same-name
+  nodes are only reported. Export a world from its card or the inspector, and a snippet from
+  更多 — snippet export drops relations with one endpoint outside the selection and reports how
+  many. Field definitions, validation rules, and merge rules are in
+  [the data format](docs/data-format.md).
 - **Light and dark themes.** Follows your system preference by default and remembers your
   choice.
 - **Responsive workspace.** Three panes on desktop; on narrow screens the sidebar and inspector
@@ -79,6 +93,7 @@ All screenshots are captured at 1440×900.
 | State        | Pinia                                                          |
 | Routing      | Vue Router 5 (HTML5 history mode)                              |
 | Graph canvas | Vue Flow (`@vue-flow/core` with background, controls, minimap) |
+| Layout       | elkjs (force-directed and layered)                             |
 | Persistence  | Dexie 4 over IndexedDB (database `loregraph`)                  |
 | Validation   | Zod 4                                                          |
 | Icons        | Lucide (`@lucide/vue`)                                         |
@@ -110,8 +125,8 @@ npm run lint
 npm run test:unit
 ```
 
-The suite contains **100 unit tests across 13 files** (Vitest with jsdom and
-`fake-indexeddb`) and **33 end-to-end tests across 8 files** (Playwright, Chromium). Install
+The suite contains **174 unit tests across 23 files** (Vitest with jsdom and
+`fake-indexeddb`) and **48 end-to-end tests across 10 files** (Playwright, Chromium). Install
 the browser once and run the E2E suite:
 
 ```bash
@@ -135,17 +150,18 @@ src/
 ├─ db/              Dexie database definition (tables and indexes)
 ├─ models/          Zod schemas and inferred domain types
 ├─ repositories/    Persistence interfaces + memory and Dexie adapters
-├─ services/        Business rules, import/export, autosave, errors
+├─ services/        Business rules, import/export, layout, autosave
 ├─ stores/          Pinia stores (universe, types, graph, ui)
 ├─ composables/     Theme, toast, shortcut and viewport helpers
-├─ components/      Vue components: common/, layout/, editor/, graph/
+├─ components/      Vue components: common/, layout/, editor/, universe/, graph/
 ├─ views/           Route-level views
 ├─ router/          Routes: / (worlds), /u/:universeId (workspace)
 └─ styles/          Tailwind entry and design tokens
 ```
 
 Read [docs/architecture.md](docs/architecture.md) for the full design: autosave and undo
-semantics, universe isolation, cascade deletion, and the cross-tab limitations of v0.1.
+semantics, the import pipeline, automatic layout, universe isolation, cascade deletion, and the
+cross-tab limitations of v0.2.
 
 ## Data and privacy
 
@@ -155,21 +171,25 @@ semantics, universe isolation, cascade deletion, and the cross-tab limitations o
 - There is no account, no cloud sync, and no analytics.
 - Clearing site data (or using a private window) deletes your worlds. **Export regularly** if
   the data matters.
-- An export contains the entire world — names, descriptions, custom properties, coordinates,
-  and timestamps. Review files before sharing them.
+- An export contains every included node and relation — names, descriptions, custom properties,
+  coordinates, and timestamps. A world file contains the whole world, a graph snippet only the
+  selected part. Review files before sharing them.
 - Format reference: [docs/data-format.md](docs/data-format.md).
 
 ## Roadmap
 
-**v0.1 (current)** — graph canvas, search and filters, inspector with custom properties,
-universe management, a built-in sample world, JSON import/export, light/dark themes, autosave,
+**v0.2 (current)** — world descriptions, two-step JSON import with merge and graph snippets,
+automatic layout, and a viewport that survives panel and window resizes.
+
+**v0.1** — graph canvas, search and filters, inspector with custom properties, universe
+management, a built-in sample world, JSON import/export, light/dark themes, autosave, and
 keyboard shortcuts.
 
 **Later, in rough order** — encyclopedia list view, timeline, map view, image attachments,
 AI-assisted worldbuilding, cloud sync, real-time collaboration, plugin system.
 
 Ideas and priorities are tracked in GitHub issues; large features are intentionally out of
-scope for v0.1 so the core editing loop stays small and reliable.
+scope for the current version so the core editing loop stays small and reliable.
 
 ## Contributing
 

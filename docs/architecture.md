@@ -7,8 +7,8 @@ network request at runtime is a `fetch` for the bundled sample world
 (`public/examples/emberfall.json`), loaded from the same origin.
 
 This document describes the layering, the contracts between layers, and the behavioural rules
-that are easy to get wrong (autosave, undo, universe isolation, cascade deletion, and the
-limitations of running multiple tabs).
+that are easy to get wrong (autosave, undo, import and export, automatic layout, universe
+isolation, cascade deletion, and the limitations of running multiple tabs).
 
 ## Design principles
 
@@ -21,7 +21,8 @@ limitations of running multiple tabs).
 4. **Replaceable persistence.** Services depend on repository interfaces, never on Dexie
    directly, so tests can run entirely in memory or on isolated in-memory IndexedDB databases.
 5. **One world at a time.** The workspace is scoped to a single universe loaded through the
-   route; cross-world operations do not exist.
+   route. The only cross-world operation is importing a file, which either creates a new world or
+   merges into the current one.
 
 ## Layers
 
@@ -33,27 +34,29 @@ limitations of running multiple tabs).
 └──────────────────────────────┬───────────────────────────────┘
                                │ reads state / calls actions
 ┌──────────────────────────────▼───────────────────────────────┐
-│ composables + Pinia stores  universe, types, graph, ui;     │
-│                            useTheme, useToast, useShortcuts  │
+│ stores + composables       universe, types, graph, ui;       │
+│                            useTheme, useToast, useShortcuts, │
+│                            useGraphViewport                  │
 └──────────────────────────────┬───────────────────────────────┘
                                │ service calls
 ┌──────────────────────────────▼───────────────────────────────┐
-│ services                   business rules, Zod validation,  │
+│ services                   business rules, Zod validation,   │
 │                            transactions, import/export,      │
-│                            debounced autosave, domain errors │
+│                            automatic layout, debounced       │
+│                            autosave, domain errors           │
 └──────────────────────────────┬───────────────────────────────┘
                                │ repository interfaces
 ┌──────────────────────────────▼───────────────────────────────┐
-│ repositories               UniverseRepository,              │
+│ repositories               UniverseRepository,               │
 │                            NodeRepository, EdgeRepository,   │
 │                            EntityTypeRepository,             │
 │                            TransactionRunner                 │
 └──────────────────────────────┬───────────────────────────────┘
                                │
 ┌──────────────────────────────▼───────────────────────────────┐
-│ persistence                Dexie database `loregraph` on    │
+│ persistence                Dexie database `loregraph` on     │
 │                            IndexedDB (src/db/schema.ts);     │
-│                            in-memory adapter for tests      │
+│                            in-memory adapter for tests       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,7 +70,8 @@ behaviour beyond validation helpers:
   `scope: 'node' | 'relation'`.
 - `node.ts` — `LoreNode`, custom property values, canvas position.
 - `edge.ts` — `LoreEdge` (relation between two nodes).
-- `export-format.ts` — `LoreExport`, the versioned file format (see
+- `export-format.ts` — the two versioned file documents, `LoreUniverseFile`
+  (`loregraph.universe`) and `LoreGraphFile` (`loregraph.graph`), sharing `formatVersion: 1` (see
   [data-format.md](data-format.md)).
 - `ids.ts` — 12-character `[A-Za-z0-9]` identifiers and a central `now()` timestamp source.
 - `icons.ts` — whitelisted Lucide icon set for node types.
@@ -90,6 +94,8 @@ indexes:
 - `src/repositories/dexie/` — production persistence. `createDexieRepositories(db)` wires the
   four repositories to one database instance; `DexieTransactionRunner` maps the declared
   `TableName[]` to tables and opens a real `rw` IndexedDB transaction over exactly those tables.
+  List queries go through `parseRows`, which validates each row and skips corrupt ones with a
+  warning; point reads use a strict `parse`.
 - `src/repositories/memory/` — in-memory adapter used by service unit tests. It clones values on
   read and write, but it cannot roll back, so its transaction runner simply executes the
   callback.
@@ -107,8 +113,9 @@ Services own the business rules and are constructed with a `Repositories` bundle
 | `universe.service.ts` | Create/list/update/delete worlds; seeds the 6 default node types and 6 default relation types for a new world; cascade-deletes a world; loads the bundled sample world (`public/examples/emberfall.json`) through the importer. |
 | `graph.service.ts`    | Node and edge CRUD; rejects self-loops and duplicate `(source, target, relationType)` edges; deletes incident edges together with a node inside one transaction; returns snapshots for undo.                                    |
 | `type.service.ts`     | Entity type CRUD; refuses to delete a type that is still referenced and reports the reference count.                                                                                                                            |
-| `import.service.ts`   | Parses and validates a `.loregraph.json` file, checks referential integrity, and imports it as a new world with fresh ids.                                                                                                      |
-| `export.service.ts`   | Builds a `LoreExport` snapshot for one world and triggers the browser download.                                                                                                                                                 |
+| `import.service.ts`   | Two-phase import: `analyzeImport` parses and validates a `.loregraph.json` file read-only and returns a preview; `commitImport` writes that plan in one transaction, either as a new world or merged into an existing one.      |
+| `export.service.ts`   | Builds a `LoreUniverseFile` for one world, or a `LoreGraphFile` for a node selection (only edges whose two endpoints are selected, and only the types they reference); triggers the browser download.                           |
+| `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default) and `layered` modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.                                                |
 | `autosave.ts`         | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
 | `search.ts`           | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
 | `errors.ts`           | `LoreGraphError` base class plus `GraphError` and `TypeInUseError`.                                                                                                                                                             |
@@ -126,36 +133,40 @@ need one narrow behaviour.
 - `stores/universe.ts` — world list, the currently selected world, sample-world seeding.
 - `stores/types.ts` — node and relation type definitions of the current world, plus lookup
   getters by key.
-- `stores/graph.ts` — nodes, edges, selection, and the optimistic update path for node edits.
+- `stores/graph.ts` — nodes, edges, selection, the optimistic update path for node edits, and the
+  one-level layout snapshot.
 - `stores/ui.ts` — theme, panel collapse state, search query, active type filters, and toast
   notifications. Theme is persisted in `localStorage` under `loregraph.theme`; everything else
   is session-only. The first-run sample flag (`loregraph.firstRunSeeded`) is owned by the
   universe view, which loads the sample world once when the library is empty.
 - `composables/useTheme.ts`, `useToast.ts`, `useShortcuts.ts`, `useGraphViewport.ts` —
   read-only theme access, notification helpers (including the 8-second undo toast), the global
-  keyboard shortcuts, and viewport fit/zoom operations for the canvas.
+  keyboard shortcuts, and viewport fit/zoom/centre-preservation operations for the canvas.
 
 ### Views and components (`src/views/`, `src/components/`)
 
-- `/` — universe list: world cards with node/edge/type counts and creation date; create, rename,
-  export, and cascade-delete actions (with confirmation); JSON import with a validation-issues
-  dialog; theme toggle; loads a built-in Chinese fantasy sample world on first run when the
+- `/` — universe list: world cards with description, node/edge/type counts and creation date;
+  create, edit (name + description), export, import (always as a new world), and cascade-delete
+  actions (with confirmation); the import preview lists validation issues before anything is
+  written; theme toggle; loads a built-in Chinese fantasy sample world on first run when the
   library is empty.
 - `/u/:universeId` — workspace: a three-pane shell (sidebar, graph canvas, inspector). The
   sidebar holds the world switcher, node search, create-node action, type filters with counts,
   and the filtered node list. The canvas renders nodes and relations, creates relations by
   dragging from a node handle into a dialog (relation type + optional label), validates
   self-loops and duplicates, highlights search matches, and offers fit-view, zoom, delete, and
-  type-manager actions. The inspector edits the selected node or edge, lists a node's incident
-  relations, and shows world statistics when nothing is selected. Keyboard shortcuts: `N` new
-  node, `Delete`/`Backspace` delete selection, `Esc` cancel/close, `Ctrl/⌘+K` focus search, `?`
-  shortcut help.
+  type-manager actions plus a 更多 menu with both layout modes, 恢复布局前位置, and graph-snippet
+  import/export. The inspector edits the selected node or edge, lists a node's incident
+  relations, and shows world statistics plus world export/import actions when nothing is
+  selected. Keyboard shortcuts: `N` new node, `Delete`/`Backspace` delete selection, `Esc`
+  cancel/close, `Ctrl/⌘+K` focus search, `?` shortcut help.
 - `/:pathMatch(.*)*` — not found page.
 
-Components are grouped as `common/` (primitives, color/icon pickers, confirm and help
-dialogs), `layout/` (app shell, sidebar, inspector, panel toggles), `editor/` (node/edge
-editors, property rows, type select), and `graph/` (`GraphCanvas`, `LoreNode`, toolbar,
-create-node/relation dialogs, and the type manager). The canvas is built on `@vue-flow/core`
+Components are grouped as `common/` (primitives, color/icon pickers, confirm, help, and import
+preview dialogs), `layout/` (app shell, sidebar, inspector, panel toggles), `editor/` (node/edge
+editors, property rows, type select), `universe/` (the shared world create/edit form), and
+`graph/` (`GraphCanvas`, `LoreNode`, toolbar, create-node/relation dialogs, graph import/export
+dialogs, and the type manager). The canvas is built on `@vue-flow/core`
 with the background, controls, and minimap add-ons; nodes are one custom Vue Flow node type
 mapped from store state, and dragging a node writes its snapped position back to the store on
 drag stop. Below 900 px the side panels become overlay drawers.
@@ -185,20 +196,52 @@ debounced, because they cannot be merged into a partial patch.
 
 ### Undo
 
-v0.1 has a deliberately small undo surface:
+v0.1 introduced a deliberately small undo surface; v0.2 adds layout restore.
 
 - **Deleting a node** is atomic in the service: incident edges and the node are removed in one
   transaction, and the service returns a `DeleteNodeSnapshot` with the node and its edges. The
   store shows a toast with an **撤销** action for 8 seconds; restoring re-inserts the node and
   edges.
 - **Deleting an edge** returns the deleted edge and offers the same toast-based undo.
+- **Automatic layout** keeps a one-level snapshot of the coordinates it replaced (see
+  [Automatic layout](#automatic-layout)). The success toast offers 撤销 for 8 seconds, and the
+  更多 menu keeps 恢复布局前位置 for as long as the snapshot exists.
 - **Deleting a universe**, deleting a type, and editing properties are _not_ undoable. Type
   deletion is blocked while references exist, and universe deletion requires explicit
   confirmation in the UI.
 
-There is no undo history stack or redo in v0.1; the toast is the only recovery path for
-deletions. Property edits are optimistic but are only rolled back when persistence fails, not
-when the user changes their mind.
+There is no undo history stack or redo. Toast actions and the layout snapshot are the only
+recovery paths; property edits are optimistic but are only rolled back when persistence fails,
+not when the user changes their mind.
+
+## Automatic layout
+
+The graph toolbar's 更多 menu offers 自动布局（力导向） (the default), 自动布局（层级）, and
+恢复布局前位置.
+
+`computeLayout(nodes, edges, mode)` in `src/services/layout.service.ts` drives elkjs: `force`
+runs 120 iterations with a fixed random seed, so the same graph always yields the same result, and
+`layered` lays components out top-down. Node size is estimated at 210×52 when Vue Flow has not
+measured a node yet. Edges with a missing endpoint or a self-loop are dropped before layout, so
+malformed data cannot make ELK fail. The function only returns integer top-left coordinates.
+
+`graph.applyLayout(mode)` is the write path:
+
+1. compute positions, and discard them if the active world changed meanwhile;
+2. flush pending per-node autosaves so an older drag cannot land after the layout;
+3. keep a one-level in-memory snapshot of the current positions;
+4. write every position in one transaction (`updateNodePositions`); if that write fails, the
+   in-memory positions are rolled back and the error is surfaced as a toast.
+
+Layout never changes names, descriptions, properties, types, or edges. The snapshot powers the
+撤销 action in the success toast (8 seconds) and 恢复布局前位置 in the menu; restoring writes the
+snapshot back and then clears it. It lives only in the store, so reloading the page or switching
+worlds drops it, and a second layout overwrites it.
+
+The canvas fits the view after a layout, a restore, or a snippet import. `useGraphViewport` also
+keeps the content at the canvas centre when the window resizes or the side panels open or close:
+`preserveCenterOnResize` observes the container and shifts the viewport by the centre delta only,
+without changing zoom or calling `fitView`.
 
 ## Universe isolation
 
@@ -210,10 +253,45 @@ when the user changes their mind.
   index on `[universeId+scope+key]`.
 - The workspace route (`/u/:universeId`) selects the active world. Loading another world
   replaces graph and type state; the previous world's data is untouched in the database.
-- Importing always creates a **new** world with fresh identifiers and appends `（导入）` to its
-  name, so imports can never overwrite existing data. The sample world goes through the same
-  path.
-- Export is always scoped to exactly one world and includes its types, nodes, and edges.
+- Importing either creates a **new** world (fresh identifiers, name suffixed `（导入）`) or merges
+  into the current world. Merging only appends: types are matched by `(scope, key)` and nodes and
+  edges always get new ids, so it cannot overwrite an existing record. The sample world goes
+  through the same new-world path.
+- Export is always scoped to exactly one world: a world file contains all of it, a graph snippet
+  only the selected nodes, their internal edges, and the types they reference.
+
+## Import and export
+
+Both directions live in `src/services/import.service.ts` and `src/services/export.service.ts`;
+the file contract is documented in [data-format.md](data-format.md).
+
+Export reads the database (not in-memory state) and triggers a download:
+
+- `exportUniverse(universeId)` returns a `LoreUniverseFile` with the world record and every type,
+  node, and edge of that world, each collection ordered by `createdAt` (ties by id).
+- `exportGraph(universeId, nodeIds)` returns `{ data, omittedEdgeCount }`. `data` is a
+  `LoreGraphFile` with the selected nodes, only the edges whose two endpoints are selected, and
+  only the types those nodes and edges reference; `omittedEdgeCount` counts edges with exactly one
+  endpoint selected, which the UI reports as dropped.
+
+Import is deliberately two-phase:
+
+1. **Analyze** — `analyzeImport(raw, { mode, targetUniverseId })` parses and validates the JSON,
+   checks ids, type keys, `universeId` consistency, and references, and plans the merge. It never
+   writes. The `ImportPreview` carries counts, new/reused/conflicting types, duplicate node names,
+   warnings, errors, and an internal `plan`.
+2. **Commit** — `commitImport(preview)` re-validates the plan, then writes world, types, nodes, and
+   edges in a single Dexie transaction. In `new-universe` mode every id is regenerated, the world
+   name gets the `（导入）` suffix, and edge endpoints are remapped; in `merge` mode types are
+   matched by `(scope, key)` (an existing type wins, a missing one is appended with the next
+   `order`), nodes and edges get fresh ids, and the target world's metadata is untouched. The plan
+   fingerprints the target world's update timestamp and its types; if they changed after the
+   analysis, the commit aborts with `目标世界在分析后已发生变化，请重新分析后再导入` and writes
+   nothing.
+
+Graph snippets can only be merged. Entry points: the universe library (导入世界, new world only), the
+inspector's world overview (export a world; import with a mode selector), and the graph toolbar's
+更多 menu (import or export a graph snippet). After a snippet import the canvas refits the view.
 
 ## Cascade deletion rules
 
@@ -231,27 +309,30 @@ executes them without rollback, which is acceptable for tests.
 
 - **Storage boundary:** services parse every entity with its Zod schema before writing, so
   invalid data cannot reach IndexedDB through normal paths.
-- **File boundary:** `ImportService.parse` uses `safeParse` to collect human-readable issues
-  instead of throwing, then runs additional referential-integrity checks (unique ids, consistent
-  `universeId`, defined type keys, existing edge endpoints). Issues carry field paths such as
-  `edges.0.source`.
+- **File boundary:** `ImportService.analyzeImport` uses `safeParse` to collect human-readable
+  issues instead of throwing, then runs additional referential-integrity checks (unique ids,
+  consistent `universeId`, defined type keys, existing edge endpoints, unique type keys per
+  scope). Issues carry field paths such as `edges.0.source`. `commitImport` re-validates the plan
+  and re-checks the target world's fingerprint inside the transaction before writing.
 - **Store boundary:** service errors surface as user-facing toasts; the graph store keeps an
   `error` field for load failures.
-- **Read boundary:** entities read back from storage are typed by the schema definitions; the
-  database schema version is bumped on any structural change (see data-format.md for the file
-  format versioning, which is independent).
+- **Read boundary:** list reads validate every row and skip bad ones with a `console.warn`
+  instead of failing the whole query (`src/repositories/dexie/parse.ts`); single-record reads and
+  all writes stay strict and throw. Zod defaults fill missing optional fields, so a stored world
+  or node without `description` reads as `""`. The database schema version is bumped on any
+  structural change (see data-format.md for the file format versioning, which is independent).
 
 ## Cross-tab limitations
 
-v0.1 does **not** synchronise state between browser tabs:
+v0.2 does **not** synchronise state between browser tabs:
 
 - There is no `BroadcastChannel`, `SharedWorker`, or storage-event listener. Each tab holds its
   own Pinia state for the same world.
 - IndexedDB writes are transactional, so a write is never partially applied; however, each
   entity is written as a whole record, so two tabs editing the same entity are **last write
   wins**. A tab with stale state can overwrite fields another tab changed.
-- Autosave timers are per tab. Closing a tab with a pending < 400 ms write may lose the last
-  keystrokes of that tab.
+- Autosave timers and the layout snapshot are per tab. Closing a tab with a pending < 400 ms write
+  may lose the last keystrokes of that tab, and another tab cannot restore its layout.
 - Export reads the database, not the in-memory state, so exporting from tab B can miss tab A's
   unsaved debounce window.
 - localStorage preferences (theme, first-run sample flag) are shared between tabs; nothing else
@@ -259,8 +340,7 @@ v0.1 does **not** synchronise state between browser tabs:
 
 Practical guidance: work on a world in a single tab, and refresh other tabs after switching.
 Adding cross-tab coordination (a `BroadcastChannel` invalidate-and-reload, or Dexie
-`liveQuery`) is a natural future extension point, but it is intentionally out of scope for
-v0.1.
+`liveQuery`) is a natural future extension point, but it is intentionally out of scope for now.
 
 ## Extension points
 
@@ -273,6 +353,8 @@ v0.1.
   format; bump `formatVersion` only for breaking changes.
 - **New default type seeds** — edit `DEFAULT_NODE_TYPE_SEEDS` / `DEFAULT_RELATION_TYPE_SEEDS` in
   `src/services/universe.service.ts`. These only affect newly created worlds.
+- **New layout modes** — extend `LayoutMode` and `layoutOptions` in
+  `src/services/layout.service.ts`, then expose the mode in `GraphToolbar.vue`.
 - **New icons** — add the Lucide component to `LUCIDE_ICONS` in `src/models/icons.ts`.
 - **Replacing the sample world** — swap `public/examples/emberfall.json`; the path is declared as
   `SAMPLE_UNIVERSE_PATH` in `src/services/universe.service.ts`.
