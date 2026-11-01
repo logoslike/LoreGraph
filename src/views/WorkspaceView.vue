@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import Inspector from '@/components/layout/Inspector.vue'
@@ -25,6 +25,12 @@ const toast = useToast()
 const shellRef = ref<InstanceType<typeof AppShell> | null>(null)
 const graphCanvasRef = ref<InstanceType<typeof GraphCanvas> | null>(null)
 const ready = ref(false)
+
+/** 工作区标题：当前世界名 + 固定后缀；切换世界或重命名后随 store 自动更新。 */
+const title = computed(() => {
+  const name = universes.current?.name
+  return name === undefined || name === '' ? 'Graph' : `${name} / Graph`
+})
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -153,7 +159,19 @@ onBeforeUnmount(() => {
           @select-node="selectNodeFromSidebar"
         />
       </template>
-      <GraphCanvas ref="graphCanvasRef" />
+      <div class="flex h-full min-h-0 min-w-0 flex-col" data-testid="workspace-main">
+        <header
+          class="flex h-12 shrink-0 items-center border-b border-border bg-surface px-4"
+          data-testid="workspace-context-header"
+        >
+          <h1 class="truncate text-sm font-semibold text-fg" data-testid="workspace-title">
+            {{ title }}
+          </h1>
+        </header>
+        <div class="min-h-0 min-w-0 flex-1">
+          <GraphCanvas ref="graphCanvasRef" />
+        </div>
+      </div>
       <template #inspector>
         <Inspector />
       </template>
