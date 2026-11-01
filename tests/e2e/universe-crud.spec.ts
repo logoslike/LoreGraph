@@ -7,19 +7,32 @@ import {
   useEmptyLibrary,
 } from './helpers'
 
-/** LG-001 世界 CRUD：创建、重命名、删除。 */
+/** LG-001 世界 CRUD：创建、编辑、删除。 */
 test.describe('LG-001 世界 CRUD', () => {
   test('新建世界后进入空工作区，返回列表可见卡片', async ({ page }) => {
     await useEmptyLibrary(page)
-    await createUniverse(page, '余烬王朝')
+    await gotoUniverses(page)
+    await page.getByTestId('new-universe-btn').click()
+    await page.getByTestId('universe-name-input').fill('余烬王朝')
+    const description = '一个被余烬覆盖的王朝，记录三代君主的兴衰。'
+    await page.getByTestId('universe-description-input').fill(description)
+    await page.getByTestId('create-universe-btn').click()
 
     await expect(page.getByTestId('graph-empty')).toBeVisible()
     await expect(page.getByTestId('lore-node')).toHaveCount(0)
 
+    // 新建时填写的简介在 Inspector 世界概览中可见
+    await expect(page.getByTestId('inspector-empty')).toContainText(description)
+    // 导入只保留在世界列表页，工作区不应出现导入入口（避免误以为导入到当前世界）
+    await expect(page.getByRole('button', { name: '导入 JSON' })).toHaveCount(0)
+
     await backToUniverses(page)
+    // 列表页按钮明确表达「新建世界」，而不是导入到某个现有世界
+    await expect(page.getByRole('button', { name: '导入世界' })).toBeVisible()
     const card = page.getByTestId('universe-card')
     await expect(card).toHaveCount(1)
     await expect(card).toContainText('余烬王朝')
+    await expect(card).toContainText(description)
     await expect(card).toContainText('0 节点')
     await expect(card).toContainText('12 类型')
   })
@@ -31,28 +44,36 @@ test.describe('LG-001 世界 CRUD', () => {
     await expect(page.getByTestId('universe-name-input')).toBeVisible()
 
     await page.getByTestId('create-universe-btn').click()
-    // 新建与重命名两个对话框共用该提示文案，作用域限定在已打开的对话框内
+    // 新建与编辑两个对话框共用该提示文案，作用域限定在已打开的对话框内
     await expect(page.locator('dialog[open]').getByText('名称不能为空')).toBeVisible()
     await expect(page.getByTestId('universe-name-input')).toBeVisible()
     await expect(page.getByTestId('universe-card')).toHaveCount(0)
   })
 
-  test('可以重命名世界，刷新后仍然生效', async ({ page }) => {
+  test('可以编辑世界名称与简介，刷新后仍然生效', async ({ page }) => {
     await useEmptyLibrary(page)
     await createUniverse(page, '余烬王朝')
     await backToUniverses(page)
 
     const card = page.getByTestId('universe-card').first()
     await card.getByTestId('rename-universe-btn').click()
+    await expect(page.getByTestId('rename-universe-input')).toBeVisible()
     const input = page.getByTestId('rename-universe-input')
     await expect(input).toHaveValue('余烬王朝')
     await input.fill('余烬王朝·改')
+    const descriptionInput = page.getByTestId('rename-universe-description-input')
+    await expect(descriptionInput).toHaveValue('')
+    const editedDescription = '改后的简介：三代君主与一场未熄的火。'
+    await descriptionInput.fill(editedDescription)
     await page.getByRole('button', { name: '保存' }).click()
 
-    await expect(page.getByTestId('universe-card').first()).toContainText('余烬王朝·改')
+    const editedCard = page.getByTestId('universe-card').first()
+    await expect(editedCard).toContainText('余烬王朝·改')
+    await expect(editedCard).toContainText(editedDescription)
 
     await page.reload()
     await expect(page.getByTestId('universe-card').first()).toContainText('余烬王朝·改')
+    await expect(page.getByTestId('universe-card').first()).toContainText(editedDescription)
   })
 
   test('删除世界需要确认，确认后回到空状态', async ({ page }) => {

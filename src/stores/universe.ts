@@ -29,14 +29,15 @@ export const useUniverseStore = defineStore('universe', {
         this.loading = false
       }
     },
-    async create(name: string): Promise<Universe> {
-      const universe = await services.universes.create({ name })
+    async create(name: string, description = ''): Promise<Universe> {
+      const universe = await services.universes.create({ name, description })
       this.universes = [universe, ...this.universes]
       this.currentId = universe.id
       return universe
     },
-    async rename(id: string, name: string): Promise<void> {
-      const updated = await services.universes.update(id, { name })
+    /** 更新世界的名称与简介。 */
+    async updateInfo(id: string, patch: { name?: string; description?: string }): Promise<void> {
+      const updated = await services.universes.update(id, patch)
       const index = this.universes.findIndex((universe) => universe.id === id)
       if (index >= 0) {
         this.universes[index] = updated

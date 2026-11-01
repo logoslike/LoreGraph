@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { Download, PanelRightClose, Upload } from '@lucide/vue'
+import { Download, PanelRightClose } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import EdgeEditor from '@/components/editor/EdgeEditor.vue'
 import NodeEditor from '@/components/editor/NodeEditor.vue'
@@ -14,15 +12,11 @@ import { useUniverseStore } from '@/stores/universe'
 
 defineOptions({ name: 'AppInspector' })
 
-const router = useRouter()
 const ui = useUiStore()
 const graph = useGraphStore()
 const types = useTypesStore()
 const universe = useUniverseStore()
 const toast = useToast()
-
-const fileInput = ref<HTMLInputElement | null>(null)
-const importIssues = ref<string[]>([])
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -39,34 +33,6 @@ async function onExport(): Promise<void> {
     toast.info('已导出世界 JSON')
   } catch (error) {
     toast.danger(`导出失败：${formatError(error)}`)
-  }
-}
-
-function openImport(): void {
-  importIssues.value = []
-  fileInput.value?.click()
-}
-
-async function onImportFile(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) {
-    return
-  }
-  try {
-    const raw = await file.text()
-    const parsed = services.importer.parse(raw)
-    if (!parsed.ok) {
-      importIssues.value = parsed.issues
-      return
-    }
-    const imported = await services.importer.import(parsed.data)
-    await universe.loadAll()
-    ui.notify(`已导入世界「${imported.name}」`)
-    await router.push({ name: 'workspace', params: { universeId: imported.id } })
-  } catch (error) {
-    importIssues.value = [formatError(error)]
   }
 }
 </script>
@@ -134,7 +100,7 @@ async function onImportFile(event: Event): Promise<void> {
           </div>
         </dl>
 
-        <div class="space-y-2">
+        <div class="space-y-1">
           <BaseButton
             variant="secondary"
             class="w-full"
@@ -144,26 +110,7 @@ async function onImportFile(event: Event): Promise<void> {
             <Download :size="16" />
             导出 JSON
           </BaseButton>
-          <BaseButton variant="secondary" class="w-full" @click="openImport">
-            <Upload :size="16" />
-            导入 JSON
-          </BaseButton>
-          <input
-            ref="fileInput"
-            type="file"
-            accept="application/json,.json"
-            class="hidden"
-            @change="onImportFile"
-          />
-        </div>
-
-        <div v-if="importIssues.length > 0" class="rounded-lg border border-danger/40 bg-bg p-2.5">
-          <p class="text-xs font-medium text-danger">
-            导入失败（{{ importIssues.length }} 个问题）
-          </p>
-          <ul class="mt-1 max-h-40 space-y-1 overflow-y-auto text-xs text-muted">
-            <li v-for="(issue, index) in importIssues" :key="index">{{ issue }}</li>
-          </ul>
+          <p class="text-xs text-muted">导出当前世界为 JSON 备份或分享；导入请在世界列表页进行。</p>
         </div>
 
         <p class="text-xs text-muted">选中画布中的节点或关系后，可在此编辑其名称、类型与属性。</p>

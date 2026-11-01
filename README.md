@@ -42,7 +42,7 @@ All screenshots are captured at 1440×900.
 - **Inspector.** Edit a node's name, type, long-form description, and arbitrary custom
   properties (string, number, or boolean); browse its incident relations and jump to them. For
   edges, edit the relation type, label, and properties. When nothing is selected it shows world
-  statistics and import/export actions.
+  statistics and an export action.
 - **Search and filters.** Find nodes by name (case-insensitive substring), browse the matches
   in the sidebar node list, see them highlighted on the canvas, and show or hide nodes by type
   with per-type counts.
@@ -52,14 +52,17 @@ All screenshots are captured at 1440×900.
   debounce; failed writes roll back to the last persisted state.
 - **Safe deletion.** Deleting a node removes its relations atomically and offers an undo toast.
   A type that is still in use cannot be deleted.
-- **Universe management.** Create, rename, and delete worlds from a card library with
-  per-world node/edge/type counts; each world has its own types, nodes, and relations.
+- **Universe management.** Create, edit, and delete worlds (name + description) from a card
+  library with per-world node/edge/type counts; each world has its own types, nodes, and
+  relations.
 - **Sample world.** An original Chinese fantasy world (烬海纪元) is bundled and loaded
   automatically the first time you open the app when the library is empty, so it is never an
   empty canvas; it can also be loaded from the empty state.
-- **JSON import and export.** Move a world between browsers and back it up as a
-  `.loregraph.json` file; import problems are listed with field paths instead of failing
-  silently (see [the data format](docs/data-format.md)).
+- **JSON import and export.** Import creates a new world from the universe list page (it never
+  touches existing worlds); export a world from its card or from the inspector. Files are
+  `.loregraph.json`, so a world can be moved between browsers or backed up, and import problems
+  are listed with field paths instead of failing silently (see
+  [the data format](docs/data-format.md)).
 - **Light and dark themes.** Follows your system preference by default and remembers your
   choice.
 - **Responsive workspace.** Three panes on desktop; on narrow screens the sidebar and inspector

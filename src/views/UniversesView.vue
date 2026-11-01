@@ -23,12 +23,14 @@ const { isDark, toggleTheme } = useTheme()
 const bootstrapping = ref(true)
 const createOpen = ref(false)
 const createName = ref('')
+const createDescription = ref('')
 const createError = ref(false)
 const busy = ref(false)
 
-const renameTarget = ref<Universe | null>(null)
-const renameName = ref('')
-const renameError = ref(false)
+const editTarget = ref<Universe | null>(null)
+const editName = ref('')
+const editDescription = ref('')
+const editError = ref(false)
 
 const deleteTarget = ref<Universe | null>(null)
 const importIssues = ref<string[]>([])
@@ -126,6 +128,7 @@ async function onSeedSample(): Promise<void> {
 
 function openCreate(): void {
   createName.value = ''
+  createDescription.value = ''
   createError.value = false
   createOpen.value = true
 }
@@ -138,7 +141,7 @@ async function onCreate(): Promise<void> {
   }
   busy.value = true
   try {
-    const created = await universes.create(name)
+    const created = await universes.create(name, createDescription.value.trim())
     createOpen.value = false
     await refreshStats()
     toast.info(`已创建世界「${created.name}」`)
@@ -150,29 +153,30 @@ async function onCreate(): Promise<void> {
   }
 }
 
-function openRename(target: Universe): void {
-  renameTarget.value = target
-  renameName.value = target.name
-  renameError.value = false
+function openEdit(target: Universe): void {
+  editTarget.value = target
+  editName.value = target.name
+  editDescription.value = target.description
+  editError.value = false
 }
 
-async function onRename(): Promise<void> {
-  const target = renameTarget.value
-  const name = renameName.value.trim()
+async function onEdit(): Promise<void> {
+  const target = editTarget.value
+  const name = editName.value.trim()
   if (!target) {
     return
   }
   if (name === '') {
-    renameError.value = true
+    editError.value = true
     return
   }
   busy.value = true
   try {
-    await universes.rename(target.id, name)
-    renameTarget.value = null
-    toast.info('世界已重命名')
+    await universes.updateInfo(target.id, { name, description: editDescription.value.trim() })
+    editTarget.value = null
+    toast.info('世界信息已更新')
   } catch (error) {
-    toast.danger(`重命名失败：${formatError(error)}`)
+    toast.danger(`保存失败：${formatError(error)}`)
   } finally {
     busy.value = false
   }
@@ -268,9 +272,14 @@ onMounted(async () => {
             data-testid="import-json-input"
             @change="onImportFile"
           />
-          <BaseButton variant="secondary" size="sm" @click="openImport">
+          <BaseButton
+            variant="secondary"
+            size="sm"
+            title="从 JSON 文件新建一个世界，不会修改现有世界"
+            @click="openImport"
+          >
             <Upload :size="16" />
-            导入 JSON
+            导入世界
           </BaseButton>
           <BaseButton size="sm" data-testid="new-universe-btn" @click="openCreate">
             <Plus :size="16" />
@@ -286,7 +295,7 @@ onMounted(async () => {
       <EmptyState
         v-else-if="universes.universes.length === 0"
         title="还没有任何世界"
-        description="创建一个世界开始记录人物、地点与事件，或先载入内置的中文奇幻示例世界。"
+        description="创建一个世界开始记录人物、地点与事件，或先载入内置的中文奇幻示例世界；也可用右上角「导入世界」从 JSON 文件新建一个世界。"
       >
         <template #icon>
           <Globe :size="36" />
@@ -315,6 +324,7 @@ onMounted(async () => {
           <h1 class="text-xl font-semibold">我的世界</h1>
           <span class="text-xs text-muted">共 {{ universes.universes.length }} 个</span>
         </div>
+        <p class="text-xs text-muted">导入会新建一个世界；导出与备份在每张世界卡片上进行。</p>
 
         <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="universe-list">
           <li
@@ -354,10 +364,10 @@ onMounted(async () => {
                 type="button"
                 class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted hover:bg-surface-2 hover:text-fg"
                 data-testid="rename-universe-btn"
-                @click="openRename(universe)"
+                @click="openEdit(universe)"
               >
                 <Pencil :size="14" />
-                重命名
+                编辑
               </button>
               <button
                 type="button"
@@ -400,6 +410,18 @@ onMounted(async () => {
         />
         <span v-if="createError" class="mt-1 block text-xs text-danger">名称不能为空</span>
       </label>
+      <label class="mt-3 block">
+        <span class="mb-1 block text-sm text-muted">世界简介（可选）</span>
+        <textarea
+          v-model="createDescription"
+          rows="3"
+          maxlength="20000"
+          placeholder="一句话介绍这个世界，会显示在世界卡片与检查器的世界概览上"
+          data-testid="universe-description-input"
+          class="w-full resize-y rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        ></textarea>
+        <span class="mt-1 block text-xs text-muted">简介可选，之后也能在世界卡片上修改。</span>
+      </label>
       <template #footer>
         <BaseButton variant="secondary" size="sm" @click="createOpen = false">取消</BaseButton>
         <BaseButton size="sm" :disabled="busy" data-testid="create-universe-btn" @click="onCreate"
@@ -409,29 +431,41 @@ onMounted(async () => {
     </BaseDialog>
 
     <BaseDialog
-      :open="renameTarget !== null"
-      title="重命名世界"
+      :open="editTarget !== null"
+      title="编辑世界"
       width="420px"
-      @close="renameTarget = null"
+      @close="editTarget = null"
     >
       <label class="block">
         <span class="mb-1 block text-sm text-muted">世界名称</span>
         <input
-          v-model="renameName"
+          v-model="editName"
           type="text"
           maxlength="120"
           autofocus
           data-testid="rename-universe-input"
           class="w-full rounded-md border bg-bg px-3 py-1.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          :class="renameError ? 'border-danger' : 'border-border'"
-          @input="renameError = false"
-          @keydown.enter="onRename"
+          :class="editError ? 'border-danger' : 'border-border'"
+          @input="editError = false"
+          @keydown.enter="onEdit"
         />
-        <span v-if="renameError" class="mt-1 block text-xs text-danger">名称不能为空</span>
+        <span v-if="editError" class="mt-1 block text-xs text-danger">名称不能为空</span>
+      </label>
+      <label class="mt-3 block">
+        <span class="mb-1 block text-sm text-muted">世界简介（可选）</span>
+        <textarea
+          v-model="editDescription"
+          rows="4"
+          maxlength="20000"
+          placeholder="一句话介绍这个世界，会显示在世界卡片与检查器的世界概览上"
+          data-testid="rename-universe-description-input"
+          class="w-full resize-y rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        ></textarea>
+        <span class="mt-1 block text-xs text-muted">留空则清除简介。</span>
       </label>
       <template #footer>
-        <BaseButton variant="secondary" size="sm" @click="renameTarget = null">取消</BaseButton>
-        <BaseButton size="sm" :disabled="busy" @click="onRename">保存</BaseButton>
+        <BaseButton variant="secondary" size="sm" @click="editTarget = null">取消</BaseButton>
+        <BaseButton size="sm" :disabled="busy" @click="onEdit">保存</BaseButton>
       </template>
     </BaseDialog>
 
