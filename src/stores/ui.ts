@@ -34,6 +34,8 @@ interface UiState {
   searchQuery: string
   activeTypeKeys: string[]
   helpOpen: boolean
+  /** 聚焦模式的中心节点 id；只在本会话内有效，不持久化。 */
+  focusNodeId: string | null
   toasts: UiToast[]
 }
 
@@ -46,6 +48,7 @@ export const useUiStore = defineStore('ui', {
     searchQuery: '',
     activeTypeKeys: [],
     helpOpen: false,
+    focusNodeId: null,
     toasts: [],
   }),
   actions: {
@@ -95,6 +98,13 @@ export const useUiStore = defineStore('ui', {
     },
     clearTypeFilters(): void {
       this.activeTypeKeys = []
+    },
+    /** 聚焦某个节点：与选中状态分离，改选或取消选中都不影响聚焦中心。 */
+    enterFocus(nodeId: string): void {
+      this.focusNodeId = nodeId
+    },
+    exitFocus(): void {
+      this.focusNodeId = null
     },
     /** 显示右下角通知；返回 toast id 便于手动关闭。 */
     notify(message: string, options: ToastOptions = {}): string {

@@ -11,6 +11,10 @@ export interface ShortcutHandlers {
   onDeleteSelection?: () => void
   /** Esc：关闭弹层或取消选中。 */
   onEscape?: () => void
+  /** Esc：退出聚焦模式（对话框打开或事件已被其他逻辑消费时不触发）。 */
+  onExitFocus?: () => void
+  /** F：进入或退出聚焦模式。 */
+  onToggleFocus?: () => void
   /** Ctrl/Cmd+K：聚焦搜索框。 */
   onFocusSearch?: () => void
   /** ?：打开快捷键帮助。 */
@@ -54,8 +58,12 @@ export function useShortcuts(handlers: ShortcutHandlers): () => void {
       return
     }
 
-    // Esc：任何状态下都允许取消选中或关闭弹层
+    // Esc：先退出聚焦（对话框自行处理 Esc，已被消费的事件也不重复处理），
+    // 再交给视图取消选中或关闭弹层
     if (key === 'Escape') {
+      if (!event.defaultPrevented && !hasOpenDialog() && !isEditableTarget(event.target)) {
+        handlers.onExitFocus?.()
+      }
       handlers.onEscape?.()
       return
     }
@@ -71,6 +79,12 @@ export function useShortcuts(handlers: ShortcutHandlers): () => void {
     if (key.toLowerCase() === 'n') {
       event.preventDefault()
       handlers.onCreateNode?.()
+      return
+    }
+
+    if (key.toLowerCase() === 'f') {
+      event.preventDefault()
+      handlers.onToggleFocus?.()
       return
     }
 

@@ -94,6 +94,16 @@ useShortcuts({
     graph.selectNode(null)
     graph.selectEdge(null)
   },
+  onExitFocus: () => {
+    if (ui.focusNodeId !== null) {
+      ui.exitFocus()
+    }
+  },
+  onToggleFocus: () => {
+    if (ready.value) {
+      graphCanvasRef.value?.toggleFocus()
+    }
+  },
   onFocusSearch: () => {
     shellRef.value?.focusSearch()
   },

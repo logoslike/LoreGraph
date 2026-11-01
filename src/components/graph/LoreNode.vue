@@ -16,9 +16,11 @@ const color = computed(() => props.data.color || '#6366f1')
     data-testid="lore-node"
     :data-node-id="id"
     :data-selected="data.isSelected ? 'true' : 'false'"
+    :data-dimmed="data.isDimmed ? 'true' : 'false'"
     :class="{
       'is-selected': data.isSelected,
       'is-match': data.isMatch,
+      'is-dimmed': data.isDimmed,
     }"
     :style="{ '--lore-color': color }"
   >
@@ -52,7 +54,8 @@ const color = computed(() => props.data.color || '#6366f1')
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
   transition:
     box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .lore-node:hover {
@@ -65,6 +68,11 @@ const color = computed(() => props.data.color || '#6366f1')
   box-shadow:
     0 0 0 2px var(--ring),
     0 6px 18px rgb(0 0 0 / 0.14);
+}
+
+/* 相邻高亮：与选中项无关的节点变淡，与搜索命中可叠加 */
+.lore-node.is-dimmed {
+  opacity: 0.25;
 }
 
 /* 搜索命中：额外的高亮环，与选中态可叠加 */

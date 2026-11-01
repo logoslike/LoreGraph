@@ -118,6 +118,7 @@ Services own the business rules and are constructed with a `Repositories` bundle
 | `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default) and `layered` modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.                                                |
 | `autosave.ts`         | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
 | `search.ts`           | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
+| `neighborhood.ts`     | Pure 1-hop neighbourhood of a selection: the node, its direct neighbours and incident edges, or a relation and its two endpoints. Ignores dangling edges; backs adjacency highlighting and Focus Mode.                          |
 | `errors.ts`           | `LoreGraphError` base class plus `GraphError` and `TypeInUseError`.                                                                                                                                                             |
 | `index.ts`            | Composition root: `services` singleton wired to Dexie (`createDexieRepositories(createLoreDatabase())`).                                                                                                                        |
 
@@ -135,10 +136,11 @@ need one narrow behaviour.
   getters by key.
 - `stores/graph.ts` — nodes, edges, selection, the optimistic update path for node edits, and the
   one-level layout snapshot.
-- `stores/ui.ts` — theme, panel collapse state, search query, active type filters, and toast
-  notifications. Theme is persisted in `localStorage` under `loregraph.theme`; everything else
-  is session-only. The first-run sample flag (`loregraph.firstRunSeeded`) is owned by the
-  universe view, which loads the sample world once when the library is empty.
+- `stores/ui.ts` — theme, panel collapse state, search query, active type filters, toast
+  notifications, and the Focus Mode centre. Theme is persisted in `localStorage` under
+  `loregraph.theme`; everything else, including the focus centre, is session-only. The first-run
+  sample flag (`loregraph.firstRunSeeded`) is owned by the universe view, which loads the sample
+  world once when the library is empty.
 - `composables/useTheme.ts`, `useToast.ts`, `useShortcuts.ts`, `useGraphViewport.ts` —
   read-only theme access, notification helpers (including the 8-second undo toast), the global
   keyboard shortcuts, and viewport fit/zoom/centre-preservation operations for the canvas.
@@ -154,12 +156,14 @@ need one narrow behaviour.
   sidebar holds the world switcher, node search, create-node action, type filters with counts,
   and the filtered node list. The canvas renders nodes and relations, creates relations by
   dragging from a node handle into a dialog (relation type + optional label), validates
-  self-loops and duplicates, highlights search matches, and offers fit-view, zoom, delete, and
-  type-manager actions plus a 更多 menu with both layout modes, 恢复布局前位置, and graph-snippet
+  self-loops and duplicates, highlights search matches, fades everything outside the selected
+  element's 1-hop neighbourhood, and offers fit-view, zoom, Focus Mode, delete, and type-manager
+  actions plus a 更多 menu with both layout modes, 恢复布局前位置, and graph-snippet
   import/export. The inspector edits the selected node or edge, lists a node's incident
   relations, and shows world statistics plus world export/import actions when nothing is
-  selected. Keyboard shortcuts: `N` new node, `Delete`/`Backspace` delete selection, `Esc`
-  cancel/close, `Ctrl/⌘+K` focus search, `?` shortcut help.
+  selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
+  `Delete`/`Backspace` delete selection, `Esc` cancel/close and leave Focus Mode,
+  `Ctrl/⌘+K` focus search, `?` shortcut help.
 - `/:pathMatch(.*)*` — not found page.
 
 Components are grouped as `common/` (primitives, color/icon pickers, confirm, help, and import
@@ -249,6 +253,29 @@ The canvas fits the view after a layout, a restore, or a snippet import. `useGra
 keeps the content at the canvas centre when the window resizes or the side panels open or close:
 `preserveCenterOnResize` observes the container and shifts the viewport by the centre delta only,
 without changing zoom or calling `fitView`.
+
+## Adjacency highlighting and Focus Mode
+
+Selecting a node keeps it, its direct neighbours (one hop, either direction), and its incident
+relations at full strength while everything else fades — node opacity 0.25, relation opacity
+0.15. Selecting a relation keeps the relation and its two endpoints. Search matches keep their
+ring on top of the faded state. With nothing selected nothing fades. The neighbourhood is
+computed over the visible elements only (`src/services/neighborhood.ts` ignores edges with a
+missing endpoint), so a selection hidden by a type filter dims nothing.
+
+Focus Mode narrows the canvas to one centre node and its direct neighbours. The centre lives in
+the `ui` store as session state, separate from the selection: selecting another node or clicking
+empty canvas changes the highlight but not the centre. It is entered with `F` or the toolbar's
+聚焦选中节点 button (both are no-ops when no node is selected) and left with `F`, `Esc`, the same
+button, or the canvas banner. Events that invalidate the graph also clear it — deleting the
+centre, switching worlds, or reloading the graph exits Focus Mode, and undoing a delete does not
+bring it back. While focused, nodes are intersected with the active type filters, only relations
+whose two endpoints are visible are drawn, and the canvas refits on entry and exit through
+`useGraphViewport.fitAll` (waiting for `nodesInitialized` when new nodes have no size yet).
+
+Edge labels show the optional per-relation label, never the relation type. They sit on a
+rounded, padded background and are hidden while the viewport zoom is below 0.6
+(`EDGE_LABEL_MIN_ZOOM`) and on every faded relation.
 
 ## Universe isolation
 

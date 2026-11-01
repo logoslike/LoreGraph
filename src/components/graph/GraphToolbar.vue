@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Download,
   Ellipsis,
+  Focus,
   GitBranch,
   LoaderCircle,
   Maximize,
@@ -24,12 +25,16 @@ withDefaults(
   defineProps<{
     /** 当前是否有可删除的选中项（节点或关系）。 */
     canDelete?: boolean
+    /** 是否选中了可聚焦的节点。 */
+    canFocus?: boolean
+    /** 是否处于聚焦模式。 */
+    focused?: boolean
     /** 自动布局进行中：布局项禁用并显示进行中。 */
     layouting?: boolean
     /** 是否存在可恢复的布局快照。 */
     canRestoreLayout?: boolean
   }>(),
-  { canDelete: false, layouting: false, canRestoreLayout: false },
+  { canDelete: false, canFocus: false, focused: false, layouting: false, canRestoreLayout: false },
 )
 
 const emit = defineEmits<{
@@ -39,6 +44,7 @@ const emit = defineEmits<{
   (event: 'zoom-in'): void
   (event: 'zoom-out'): void
   (event: 'delete-selected'): void
+  (event: 'toggle-focus'): void
   (event: 'auto-layout', mode: LayoutMode): void
   (event: 'restore-layout'): void
   (event: 'graph-imported'): void
@@ -255,6 +261,20 @@ function onExportGraph(): void {
         </button>
       </div>
     </div>
+
+    <!-- 聚焦模式：选中节点后可进入，再次点击或按 F 退出 -->
+    <BaseButton
+      variant="ghost"
+      size="sm"
+      data-testid="focus-mode-btn"
+      :disabled="!focused && !canFocus"
+      :aria-pressed="focused"
+      :aria-label="focused ? '退出聚焦' : '聚焦选中节点'"
+      :title="focused ? '退出聚焦（F）' : '聚焦选中节点（F）'"
+      @click="emit('toggle-focus')"
+    >
+      <Focus :size="16" :class="focused ? 'text-accent' : ''" />
+    </BaseButton>
 
     <BaseButton
       variant="ghost"

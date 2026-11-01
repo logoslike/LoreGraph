@@ -54,8 +54,13 @@ All screenshots are captured at 1440×900.
 - **Search and filters.** Find nodes by name (case-insensitive substring), browse the matches
   in the sidebar node list, see them highlighted on the canvas, and show or hide nodes by type
   with per-type counts.
-- **Keyboard shortcuts.** `N` creates a node, `Delete`/`Backspace` deletes the selection,
-  `Esc` cancels, `Ctrl/⌘+K` focuses search, `?` opens the shortcut help.
+- **Adjacency highlighting and Focus Mode.** Selecting a node keeps it, its direct neighbours,
+  and its relations sharp while everything else fades; selecting a relation keeps it and its two
+  endpoints. Press `F` (or the toolbar button) to show only that node and its direct neighbours,
+  with a banner to leave it; `Esc` also leaves Focus Mode.
+- **Keyboard shortcuts.** `N` creates a node, `F` enters or leaves Focus Mode,
+  `Delete`/`Backspace` deletes the selection, `Esc` cancels or leaves Focus Mode,
+  `Ctrl/⌘+K` focuses search, `?` opens the shortcut help.
 - **Autosave.** Edits are applied to the UI immediately and flushed to IndexedDB after a short
   debounce; failed writes roll back to the last persisted state.
 - **Safe deletion.** Deleting a node removes its relations atomically and offers an undo toast.
@@ -126,8 +131,8 @@ npm run lint
 npm run test:unit
 ```
 
-The suite contains **174 unit tests across 23 files** (Vitest with jsdom and
-`fake-indexeddb`) and **48 end-to-end tests across 10 files** (Playwright, Chromium). Install
+The suite contains **204 unit tests across 27 files** (Vitest with jsdom and
+`fake-indexeddb`) and **58 end-to-end tests across 12 files** (Playwright, Chromium). Install
 the browser once and run the E2E suite:
 
 ```bash

@@ -16,7 +16,7 @@ import {
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
-import { Plus, Sparkles } from '@lucide/vue'
+import { Plus, ScanSearch, Sparkles, X } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import GraphToolbar from './GraphToolbar.vue'
 import LoreNode from './LoreNode.vue'
@@ -26,6 +26,7 @@ import TypeManagerDialog from './TypeManagerDialog.vue'
 import type { LoreNodeData } from './types'
 import { useGraphViewport } from '@/composables/useGraphViewport'
 import type { LayoutMode } from '@/services/layout.service'
+import { neighborhoodOf } from '@/services/neighborhood'
 import type { LoreEdge } from '@/models/edge'
 import type { LoreNode as LoreNodeModel } from '@/models/node'
 import { useGraphStore } from '@/stores/graph'
@@ -47,6 +48,9 @@ const flow = useVueFlow()
 const viewport = useGraphViewport(flow)
 /** 所有节点都量到尺寸后 Vue Flow 才会报 true，用于布局/导入后等待新节点可被 fitView 计入。 */
 const nodesInitialized = useNodesInitialized()
+
+/** 视口缩小到该阈值以下时隐藏全部边标签，避免标签互相压叠。 */
+const EDGE_LABEL_MIN_ZOOM = 0.6
 
 /** 画布根元素：尺寸变化时用它保持中心内容不动。 */
 const canvasRef = ref<HTMLElement | null>(null)
@@ -82,8 +86,46 @@ function isMatch(node: LoreNodeModel): boolean {
   )
 }
 
-const visibleNodes = computed(() => graph.nodes.filter(isVisible))
+/** 聚焦模式保留的节点 id；未聚焦时为 null。类型筛选与它在 visibleNodes 里取交集。 */
+const focusNodeIds = computed<Set<string> | null>(() => {
+  const centerId = ui.focusNodeId
+  if (centerId === null) {
+    return null
+  }
+  return (
+    neighborhoodOf(graph.nodes, graph.edges, { nodeId: centerId, edgeId: null })?.nodeIds ?? null
+  )
+})
+
+/** 聚焦中心节点，用于顶部提示条。 */
+const focusCenter = computed(() =>
+  ui.focusNodeId === null ? null : graph.nodeById(ui.focusNodeId),
+)
+
+const visibleNodes = computed(() =>
+  graph.nodes.filter(
+    (node) => isVisible(node) && (focusNodeIds.value === null || focusNodeIds.value.has(node.id)),
+  ),
+)
 const visibleNodeIds = computed(() => new Set(visibleNodes.value.map((node) => node.id)))
+
+/** 边只在两端节点都可见时渲染，避免筛选或聚焦后出现悬空连线。 */
+const visibleEdges = computed(() =>
+  graph.edges.filter(
+    (edge) => visibleNodeIds.value.has(edge.source) && visibleNodeIds.value.has(edge.target),
+  ),
+)
+
+/** 相邻高亮的保留集合；无选中时为 null，画布不变淡。 */
+const neighborhood = computed(() =>
+  neighborhoodOf(visibleNodes.value, visibleEdges.value, {
+    nodeId: graph.selectedNodeId,
+    edgeId: graph.selectedEdgeId,
+  }),
+)
+
+/** 视口缩放低于阈值时隐藏所有边标签。 */
+const edgeLabelsVisible = computed(() => flow.viewport.value.zoom >= EDGE_LABEL_MIN_ZOOM)
 
 /** store -> Vue Flow 的单向映射：画布只读，不回写。 */
 const flowNodes = computed<Node<LoreNodeData>[]>(() =>
@@ -100,36 +142,38 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
         iconName: typeDef?.icon,
         isSelected: graph.selectedNodeId === node.id,
         isMatch: isMatch(node),
+        isDimmed: neighborhood.value !== null && !neighborhood.value.nodeIds.has(node.id),
       },
     }
   }),
 )
 
-/** 边只在两端节点都可见时渲染，避免筛选后出现悬空连线。 */
 const flowEdges = computed<Edge[]>(() =>
-  graph.edges
-    .filter(
-      (edge) => visibleNodeIds.value.has(edge.source) && visibleNodeIds.value.has(edge.target),
-    )
-    .map((edge) => {
-      const relation = types.relationTypeByKey(edge.relationType)
-      const color = relation?.color ?? 'var(--muted)'
-      const selected = graph.selectedEdgeId === edge.id
-      return {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        type: 'smoothstep',
-        label: edge.label || undefined,
-        style: {
-          stroke: color,
-          strokeWidth: selected ? 2.5 : 1.6,
-          opacity: selected ? 1 : 0.8,
-        },
-        labelStyle: { fill: 'var(--fg)', fontSize: '11px' },
-        labelBgStyle: { fill: 'var(--bg)', fillOpacity: 0.85 },
-      }
-    }),
+  visibleEdges.value.map((edge) => {
+    const relation = types.relationTypeByKey(edge.relationType)
+    const color = relation?.color ?? 'var(--muted)'
+    const selected = graph.selectedEdgeId === edge.id
+    // 有选中时变淡的边不显示标签；缩小到阈值以下时全部隐藏
+    const dimmed = neighborhood.value !== null && !neighborhood.value.edgeIds.has(edge.id)
+    const label = edge.label && !dimmed && edgeLabelsVisible.value ? edge.label : undefined
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: 'smoothstep',
+      label,
+      style: {
+        stroke: color,
+        strokeWidth: selected ? 2.5 : 1.6,
+        opacity: dimmed ? 0.15 : selected ? 1 : 0.8,
+      },
+      labelStyle: { fill: 'var(--fg)', fontSize: '11px' },
+      labelBgStyle: { fill: 'var(--bg)', fillOpacity: 0.85 },
+      // 圆角 + 内边距，标签不再紧贴文字
+      labelBgPadding: [6, 3],
+      labelBgBorderRadius: 4,
+    }
+  }),
 )
 
 const canDelete = computed(() => graph.selectedNodeId !== null || graph.selectedEdgeId !== null)
@@ -265,6 +309,17 @@ function onPaneClick(): void {
   graph.selectEdge(null)
 }
 
+/** 进入/退出聚焦模式：工具栏按钮与 F 键共用，未选中节点且未聚焦时是空操作。 */
+function toggleFocus(): void {
+  if (ui.focusNodeId !== null) {
+    ui.exitFocus()
+    return
+  }
+  if (graph.selectedNodeId !== null) {
+    ui.enterFocus(graph.selectedNodeId)
+  }
+}
+
 /** 连线：先做自连/重复校验，合法则打开关系对话框，确认后才 createEdge。 */
 function onConnect(connection: Connection): void {
   const source = connection.source
@@ -371,8 +426,19 @@ watch(
   () => autoFit(),
 )
 
+/** 进入或退出聚焦后可见节点变化，重新适应视图。 */
+watch(
+  () => ui.focusNodeId,
+  () => fitAllWhenNodesReady(),
+)
+
 // 供父组件/E2E 调用
-defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpen.value = true) })
+defineExpose({
+  fitView,
+  openCreateDialog,
+  openTypeManager: () => (typeManagerOpen.value = true),
+  toggleFocus,
+})
 </script>
 
 <template>
@@ -406,9 +472,12 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
       <Panel position="top-left">
         <GraphToolbar
           :can-delete="canDelete"
+          :can-focus="graph.selectedNodeId !== null"
+          :focused="ui.focusNodeId !== null"
           :layouting="graph.isLayouting"
           :can-restore-layout="graph.canRestoreLayout"
           @create-node="openCreateDialog"
+          @toggle-focus="toggleFocus"
           @manage-types="typeManagerOpen = true"
           @fit-view="fitView"
           @zoom-in="zoomIn"
@@ -418,6 +487,24 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
           @restore-layout="onRestoreLayout"
           @graph-imported="onGraphImported"
         />
+      </Panel>
+
+      <!-- 聚焦模式提示条：中心节点名 + 退出按钮 -->
+      <Panel v-if="focusCenter" position="top-center">
+        <div class="graph-focus-banner" data-testid="focus-banner">
+          <ScanSearch :size="14" aria-hidden="true" />
+          <span class="graph-focus-banner__label">聚焦：{{ focusCenter.name }}</span>
+          <button
+            type="button"
+            class="graph-focus-banner__exit"
+            data-testid="focus-exit-btn"
+            aria-label="退出聚焦"
+            title="退出聚焦（F）"
+            @click="ui.exitFocus()"
+          >
+            <X :size="14" />
+          </button>
+        </div>
       </Panel>
     </VueFlow>
 
@@ -504,6 +591,45 @@ defineExpose({ fitView, openCreateDialog, openTypeManager: () => (typeManagerOpe
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   text-align: center;
   pointer-events: auto;
+}
+
+/* 聚焦模式提示条：与侧栏卡片一致的主题令牌，圆角胶囊形 */
+.graph-focus-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+}
+
+.graph-focus-banner__label {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-focus-banner__exit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: var(--muted);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.graph-focus-banner__exit:hover {
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .graph-canvas__icon {

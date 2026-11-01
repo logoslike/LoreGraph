@@ -165,6 +165,8 @@ export const useGraphStore = defineStore('graph', {
         this.selectedNodeId = null
         this.selectedEdgeId = null
         this.layoutSnapshot = null
+        // 重新加载后聚焦中心可能已不存在，直接退出聚焦
+        useUiStore().exitFocus()
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error)
       } finally {
@@ -181,6 +183,7 @@ export const useGraphStore = defineStore('graph', {
       this.error = null
       this.isLayouting = false
       this.layoutSnapshot = null
+      useUiStore().exitFocus()
       pendingPatches.clear()
       rollbackNodes.clear()
       inflightSaves.clear()
@@ -323,6 +326,10 @@ export const useGraphStore = defineStore('graph', {
         this.selectedEdgeId = null
       }
       const ui = useUiStore()
+      // 聚焦中心被删除时自动退出聚焦；撤销恢复节点后不再自动回到聚焦
+      if (ui.focusNodeId === id) {
+        ui.exitFocus()
+      }
       ui.notify(`已删除节点「${snapshot.node.name}」`, {
         variant: 'info',
         actionLabel: '撤销',

@@ -12,4 +12,6 @@ export interface LoreNodeData {
   isSelected: boolean
   /** 是否命中当前搜索词。 */
   isMatch: boolean
+  /** 是否因相邻高亮而变淡（有选中且不在 1 跳邻域内）。 */
+  isDimmed: boolean
 }

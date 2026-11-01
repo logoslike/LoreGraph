@@ -35,6 +35,16 @@ and files written by v0.1 are no longer importable. 世界导出格式标识由 
   layouts.
 - Viewport stability: resizing the window or opening/closing the sidebar and inspector keeps the
   content at the canvas centre; the view refits after a layout, a restore, and a snippet import.
+- Adjacency highlighting: selecting a node keeps it, its direct neighbours, and its incident
+  relations sharp while the rest fade (node opacity 0.25, relation opacity 0.15); selecting a
+  relation keeps the relation and its two endpoints. Search matches keep their ring on top, and
+  nothing fades without a selection.
+- Focus Mode (`F` or the toolbar's 聚焦选中节点 button): show only the centre node and its direct
+  neighbours, with a banner whose button leaves it again. The centre is session state separate
+  from the selection, so selecting another node or clicking empty canvas keeps it; deleting the
+  centre, switching worlds, or reloading the graph leaves Focus Mode. `Esc` also leaves it.
+- Edge label polish: labels sit on a rounded, padded background and are hidden while zoomed out
+  below 0.6 or when the relation is faded. Relations without a custom label still show no label.
 - Tolerant list reads from IndexedDB: each row is validated and invalid rows are skipped with a
   console warning instead of failing the whole query; single-record reads stay strict.
 
