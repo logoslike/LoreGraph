@@ -112,6 +112,9 @@ defineExpose({ openSidebar, openInspector, focusSearch })
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  /* 具名区域固定三块面板的列位置：v-show 收起时 display:none 的元素不再参与
+     栅格自动排布，若依赖自动排布，主区会落进第一列（auto → 0 宽），画布随之塌成 0 宽。 */
+  grid-template-areas: 'sidebar main inspector';
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -121,6 +124,7 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 }
 
 .app-shell__sidebar {
+  grid-area: sidebar;
   width: 264px;
   height: 100%;
   min-height: 0;
@@ -128,6 +132,7 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 }
 
 .app-shell__inspector {
+  grid-area: inspector;
   width: 336px;
   height: 100%;
   min-height: 0;
@@ -135,6 +140,7 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 }
 
 .app-shell__main {
+  grid-area: main;
   position: relative;
   min-width: 0;
   height: 100%;
@@ -152,6 +158,8 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 @media (max-width: 899px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
+    /* 窄屏只剩主区一列，两侧面板改为固定定位的抽屉 */
+    grid-template-areas: 'main';
   }
 
   .app-shell__sidebar,
