@@ -19,11 +19,13 @@ import { MiniMap } from '@vue-flow/minimap'
 import { Plus, ScanSearch, Sparkles, X } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import GraphToolbar from './GraphToolbar.vue'
+import LoreEdgeView from './LoreEdge.vue'
 import LoreNode from './LoreNode.vue'
 import CreateNodeDialog from './CreateNodeDialog.vue'
 import RelationDialog from './RelationDialog.vue'
 import TypeManagerDialog from './TypeManagerDialog.vue'
-import type { LoreNodeData } from './types'
+import { assignEdgeLanes, orderEdgesForVisualPriority } from './edge-lanes'
+import type { LoreEdgeData, LoreNodeData } from './types'
 import { useGraphViewport } from '@/composables/useGraphViewport'
 import type { LayoutMode } from '@/services/layout.service'
 import { neighborhoodOf } from '@/services/neighborhood'
@@ -66,6 +68,8 @@ const pendingConnection = ref<{ source: string; target: string } | null>(null)
 
 /** 自定义节点注册表：node.type === 'loreNode' 时使用 LoreNode 渲染。 */
 const nodeTypes = { loreNode: markRaw(LoreNode) }
+/** 自定义关系注册表：需要在同一对节点间为多条关系分道，故不能使用内置 smoothstep。 */
+const edgeTypes = { loreEdge: markRaw(LoreEdgeView) }
 
 const filterActive = computed(() => ui.activeTypeKeys.length > 0)
 const searchQuery = computed(() => ui.searchQuery.trim().toLowerCase())
@@ -148,8 +152,15 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
   }),
 )
 
-const flowEdges = computed<Edge[]>(() =>
-  visibleEdges.value.map((edge) => {
+/**
+ * 同一对节点之间的多条关系（双向关系、导入的重复关系）分配对称车道：
+ * 连线绕到节点上方/下方，标签不再落在同一点上。唯一关系保持 lane=0，外观不变。
+ */
+const edgeLanes = computed(() => assignEdgeLanes(visibleEdges.value))
+
+const flowEdges = computed<Edge<LoreEdgeData>[]>(() =>
+  // 选中的关系最后绘制，标签与描边不会被其他关系压住
+  orderEdgesForVisualPriority(visibleEdges.value, graph.selectedEdgeId).map((edge) => {
     const relation = types.relationTypeByKey(edge.relationType)
     const color = relation?.color ?? 'var(--muted)'
     const selected = graph.selectedEdgeId === edge.id
@@ -160,7 +171,8 @@ const flowEdges = computed<Edge[]>(() =>
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      type: 'smoothstep',
+      type: 'loreEdge',
+      data: { lane: edgeLanes.value.get(edge.id) ?? 0 },
       label,
       style: {
         stroke: color,
@@ -485,6 +497,7 @@ defineExpose({
       :nodes="flowNodes"
       :edges="flowEdges"
       :node-types="nodeTypes"
+      :edge-types="edgeTypes"
       :delete-key-code="null"
       :min-zoom="0.2"
       :max-zoom="1.8"

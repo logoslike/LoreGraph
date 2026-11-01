@@ -15,3 +15,9 @@ export interface LoreNodeData {
   /** 是否因相邻高亮而变淡（有选中且不在 1 跳邻域内）。 */
   isDimmed: boolean
 }
+
+/** 传给自定义关系组件的业务数据。 */
+export interface LoreEdgeData {
+  /** 同一对节点之间的车道：0 表示唯一关系、沿用默认路径，正负表示绕到下方/上方。 */
+  lane: number
+}
