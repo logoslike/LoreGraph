@@ -287,6 +287,43 @@ function openCreateDialog(): void {
   createOpen.value = true
 }
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      resolve()
+      return
+    }
+    requestAnimationFrame(() => resolve())
+  })
+}
+
+/**
+ * 等节点被 Vue Flow 收下并量到尺寸：类型筛选被清除后重新出现的节点，
+ * 首帧尺寸为 0，此时 fitNode 会按零尺寸包围盒计算，节点只会贴到视口边缘而不居中。
+ */
+async function waitForNodeMeasured(nodeId: string, maxFrames = 30): Promise<boolean> {
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    const node = flow.findNode(nodeId)
+    if (node && node.dimensions.width > 0 && node.dimensions.height > 0) {
+      return true
+    }
+    await nextFrame()
+  }
+  return false
+}
+
+/**
+ * 把指定节点定位到视口中心（供侧栏点击节点等画布外入口调用）。
+ * 节点可能刚被类型筛选放出来，先等它被挂载并量到尺寸，再做单节点 fitView。
+ */
+async function focusNode(nodeId: string): Promise<boolean> {
+  await nextTick()
+  if (!(await waitForNodeMeasured(nodeId))) {
+    return false
+  }
+  return await viewport.fitNode(nodeId)
+}
+
 async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
   // 拖拽结束才回写 store，拖动过程不产生保存
   const position = {
@@ -435,6 +472,7 @@ watch(
 // 供父组件/E2E 调用
 defineExpose({
   fitView,
+  focusNode,
   openCreateDialog,
   openTypeManager: () => (typeManagerOpen.value = true),
   toggleFocus,

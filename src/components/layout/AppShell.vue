@@ -25,6 +25,16 @@ if (isMobile.value) {
   ui.inspectorCollapsed = true
 }
 
+/**
+ * 侧栏的槽位属性：收起状态由 AppShell 通过栅格列宽表达，
+ * 但 Rail 与展开控件由 Sidebar 自己渲染，因此需要把状态传给它。
+ */
+defineSlots<{
+  default?: () => unknown
+  sidebar?: (props: { collapsed: boolean }) => unknown
+  inspector?: () => unknown
+}>()
+
 /** 进入窄屏时默认收起两侧面板，避免遮挡画布。 */
 function onMediaChange(event: MediaQueryListEvent): void {
   isMobile.value = event.matches
@@ -75,11 +85,28 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 </script>
 
 <template>
-  <div class="app-shell">
-    <div v-if="drawerOpen" class="app-shell__backdrop" @click="closeDrawers" />
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell--sidebar-collapsed': ui.sidebarCollapsed,
+      'app-shell--inspector-collapsed': ui.inspectorCollapsed,
+    }"
+  >
+    <div
+      v-if="drawerOpen"
+      class="app-shell__backdrop"
+      data-testid="app-shell-backdrop"
+      @click="closeDrawers"
+    />
 
-    <aside v-show="sidebarOpen" class="app-shell__sidebar" aria-label="侧边栏">
-      <slot name="sidebar" />
+    <!-- 桌面三列：侧栏收起时仍占 56px 的 Rail 列；窄屏只在抽屉打开时显示 -->
+    <aside
+      v-show="!isMobile || sidebarOpen"
+      class="app-shell__sidebar"
+      aria-label="侧边栏"
+      data-testid="sidebar-column"
+    >
+      <slot name="sidebar" :collapsed="ui.sidebarCollapsed" />
     </aside>
 
     <main class="app-shell__main">
@@ -90,8 +117,9 @@ defineExpose({ openSidebar, openInspector, focusSearch })
       <slot name="inspector" />
     </aside>
 
+    <!-- 桌面收起时由 Sidebar 自己渲染 Rail 内的展开控件，这里只在窄屏保留抽屉入口 -->
     <PanelToggle
-      v-if="!sidebarOpen"
+      v-if="isMobile && !sidebarOpen"
       side="left"
       label="展开侧边栏"
       data-testid="toggle-sidebar"
@@ -109,9 +137,14 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 
 <style scoped>
 .app-shell {
+  --sidebar-width: 264px;
+  --inspector-width: 336px;
+
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* 固定三列：侧栏（264px 展开 / 56px Rail）、主区、检查器。
+     侧栏收起时仍在栅格内，画布因此只释放 264px - 56px = 208px。 */
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
   /* 具名区域固定三块面板的列位置：v-show 收起时 display:none 的元素不再参与
      栅格自动排布，若依赖自动排布，主区会落进第一列（auto → 0 宽），画布随之塌成 0 宽。 */
   grid-template-areas: 'sidebar main inspector';
@@ -123,9 +156,19 @@ defineExpose({ openSidebar, openInspector, focusSearch })
   color: var(--fg);
 }
 
+.app-shell--sidebar-collapsed {
+  --sidebar-width: 56px;
+}
+
+/* 检查器收起时列宽归零：隐藏的检查器不再占据右侧空间 */
+.app-shell--inspector-collapsed {
+  --inspector-width: 0px;
+}
+
 .app-shell__sidebar {
   grid-area: sidebar;
-  width: 264px;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -133,7 +176,8 @@ defineExpose({ openSidebar, openInspector, focusSearch })
 
 .app-shell__inspector {
   grid-area: inspector;
-  width: 336px;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   overflow: hidden;
