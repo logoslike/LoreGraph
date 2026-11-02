@@ -10,6 +10,8 @@ export interface LoreNodeData {
   iconName?: string
   /** 是否在 store 中选中（单一事实来源，不依赖 Vue Flow 内部选中态）。 */
   isSelected: boolean
+  /** 是否属于当前选中项的 1 跳邻域（不含选中项本身）。 */
+  isNeighbor: boolean
   /** 是否命中当前搜索词。 */
   isMatch: boolean
   /** 是否因相邻高亮而变淡（有选中且不在 1 跳邻域内）。 */
@@ -26,6 +28,6 @@ export interface LoreNodeData {
 
 /** 传给自定义关系组件的业务数据。 */
 export interface LoreEdgeData {
-  /** 同一对节点之间的车道：0 表示唯一关系、沿用默认路径，正负表示绕到下方/上方。 */
+  /** 同一对节点之间的车道：0 表示唯一关系（使用连续平滑样条），正负表示绕到下方/上方分道。 */
   lane: number
 }

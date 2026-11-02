@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   connectNodes,
+  createNodeViaToolbar,
   createTwoSeparatedNodes,
   createUniverse,
   dragNodeBy,
@@ -307,6 +308,164 @@ test.describe('LG-207 恢复布局', () => {
         message: '等待撤销布局写入 IndexedDB 超时',
       })
       .toEqual(before)
+    expectPositionsClose(await storedPositions(page), before)
+  })
+})
+/** 画布节点的固定尺寸（与 layout.service 的估算一致），用于把坐标换算成包围盒。 */
+const NODE_WIDTH = 210
+const NODE_HEIGHT = 52
+
+interface Bounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+/** 按节点名取坐标包围盒。 */
+function boundsOf(positions: Positions, names: string[]): Bounds {
+  const boxes = names.map((name) => positions[name])
+  return {
+    minX: Math.min(...boxes.map((box) => box.x)),
+    minY: Math.min(...boxes.map((box) => box.y)),
+    maxX: Math.max(...boxes.map((box) => box.x + NODE_WIDTH)),
+    maxY: Math.max(...boxes.map((box) => box.y + NODE_HEIGHT)),
+  }
+}
+
+/** 两个簇在任一轴上分离即视为不重叠。 */
+function isDisjoint(a: Bounds, b: Bounds): boolean {
+  return a.maxX <= b.minX || b.maxX <= a.minX || a.maxY <= b.minY || b.maxY <= a.minY
+}
+
+/**
+ * 连一条跨类型关系，并等到画布上真的多出这条边。
+ * 拖拽连线偶发没打开对话框或对话框被关掉却没写入：重试一次，避免交互抖动被当成回归。
+ */
+async function createRelation(
+  page: Page,
+  source: string,
+  target: string,
+  expectedEdges: number,
+): Promise<void> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await connectNodes(page, source, target)
+    } catch (error) {
+      if (attempt === 2) {
+        throw error
+      }
+      await page.keyboard.press('Escape')
+      await waitForViewportIdle(page)
+      continue
+    }
+
+    await page.getByTestId('relation-type-select').selectOption({ index: 1 })
+    await page.getByTestId('submit-relation-btn').click()
+    await expect(page.getByTestId('relation-type-select')).toBeHidden()
+
+    try {
+      await expect(page.locator('.vue-flow__edge')).toHaveCount(expectedEdges, { timeout: 5_000 })
+      return
+    } catch (error) {
+      if (attempt === 2) {
+        throw error
+      }
+    }
+  }
+}
+
+/**
+ * 两种类型、三个节点、两条跨类型关系：角色「澜舟」「墨鸦」，地点「沉钟湾」。
+ * 先拖开再连线，避免节点叠在一起时连接点被挡住。
+ */
+async function buildClusteredWorld(page: Page): Promise<void> {
+  await useEmptyLibrary(page)
+  await createUniverse(page, '聚集布局')
+  await createNodeViaToolbar(page, '澜舟', '角色')
+  await dragNodeBy(page, '澜舟', -180, -120)
+  await createNodeViaToolbar(page, '墨鸦', '角色')
+  await dragNodeBy(page, '墨鸦', -180, 120)
+  await createNodeViaToolbar(page, '沉钟湾', '地点')
+  await dragNodeBy(page, '沉钟湾', 200, 0)
+  await page.getByTestId('fit-view-btn').click()
+  await waitForViewportIdle(page)
+
+  await createRelation(page, '澜舟', '沉钟湾', 1)
+  await createRelation(page, '墨鸦', '沉钟湾', 2)
+
+  await page.getByTestId('fit-view-btn').click()
+  await waitForViewportIdle(page)
+}
+
+test.describe('LG-308 按类型聚集布局', () => {
+  test('同类型节点聚成一簇、跨类型关系仍可见，刷新后坐标保持', async ({ page }) => {
+    await buildClusteredWorld(page)
+    const before = await storedPositions(page)
+    const edgeCountBefore = await storedEdgeCount(page)
+    expect(edgeCountBefore).toBe(2)
+
+    await runLayout(page, 'auto-layout-clustered-btn')
+    await dismissToasts(page)
+
+    // 只改坐标：节点数与关系数不变
+    await expect(page.getByTestId('lore-node')).toHaveCount(3)
+    expect(await storedEdgeCount(page)).toBe(edgeCountBefore)
+
+    const after = await storedPositions(page)
+    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort())
+    expect(after).not.toEqual(before)
+
+    // 角色簇与地点簇的包围盒分离：同类型节点排在一起
+    const characters = boundsOf(after, ['澜舟', '墨鸦'])
+    const place = boundsOf(after, ['沉钟湾'])
+    expect(isDisjoint(characters, place)).toBe(true)
+
+    // 跨类型关系没有被删除或隐藏
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2)
+
+    // 刷新后坐标保持，画布按库内坐标渲染
+    await page.reload()
+    await expect(page.getByTestId('graph-canvas')).toBeVisible()
+    await expect(page.getByTestId('lore-node')).toHaveCount(3)
+    expect(await storedPositions(page)).toEqual(after)
+    for (const name of Object.keys(after)) {
+      const rendered = await renderedPosition(page, name)
+      expect(Math.abs(rendered.x - after[name].x)).toBeLessThanOrEqual(8)
+      expect(Math.abs(rendered.y - after[name].y)).toBeLessThanOrEqual(8)
+    }
+  })
+
+  test('聚集布局可恢复到布局前坐标：菜单恢复与提示撤销都可用', async ({ page }) => {
+    await buildClusteredWorld(page)
+    const before = await storedPositions(page)
+
+    await runLayout(page, 'auto-layout-clustered-btn')
+    expect(await storedPositions(page)).not.toEqual(before)
+
+    // 菜单「恢复布局前位置」
+    await dismissToasts(page)
+    await clickToolbarMenuItem(page, 'restore-layout-btn')
+    await expect
+      .poll(async () => await storedPositions(page), {
+        timeout: 15_000,
+        message: '等待聚集布局后的恢复写入 IndexedDB 超时',
+      })
+      .toEqual(before)
+    await waitForViewportIdle(page)
+
+    // 再布局一次，用提示里的「撤销」回到同一份布局前坐标
+    await runLayout(page, 'auto-layout-clustered-btn')
+    expect(await storedPositions(page)).not.toEqual(before)
+    const toast = page.getByTestId('toast').filter({ hasText: '已自动布局' })
+    await toast.getByTestId('toast-action-btn').click()
+    await expect
+      .poll(async () => await storedPositions(page), {
+        timeout: 15_000,
+        message: '等待聚集布局提示撤销写入 IndexedDB 超时',
+      })
+      .toEqual(before)
+    await waitForViewportIdle(page)
     expectPositionsClose(await storedPositions(page), before)
   })
 })

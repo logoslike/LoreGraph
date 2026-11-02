@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
+  ArrowRight,
+  Boxes,
   Download,
   Ellipsis,
   Focus,
@@ -38,6 +40,8 @@ withDefaults(
     searchOpen?: boolean
     /** 当前搜索词非空：查找按钮保持高亮，提示搜索仍在生效。 */
     searchActive?: boolean
+    /** 是否给全部关系显示方向箭头；全局开关，默认开启。 */
+    showEdgeArrows?: boolean
   }>(),
   {
     canDelete: false,
@@ -47,6 +51,7 @@ withDefaults(
     canRestoreLayout: false,
     searchOpen: false,
     searchActive: false,
+    showEdgeArrows: true,
   },
 )
 
@@ -57,6 +62,7 @@ const emit = defineEmits<{
   (event: 'zoom-in'): void
   (event: 'zoom-out'): void
   (event: 'toggle-search'): void
+  (event: 'toggle-edge-arrows'): void
   (event: 'delete-selected'): void
   (event: 'toggle-focus'): void
   (event: 'auto-layout', mode: LayoutMode): void
@@ -199,6 +205,19 @@ function onExportGraph(): void {
       <Search :size="16" :class="searchActive ? 'text-accent' : ''" />
     </BaseButton>
 
+    <!-- 全局箭头开关：只控制显示，不写入任何关系数据，也没有逐边开关 -->
+    <BaseButton
+      variant="ghost"
+      size="sm"
+      data-testid="edge-arrows-toggle"
+      :aria-pressed="showEdgeArrows"
+      :aria-label="showEdgeArrows ? '隐藏关系箭头' : '显示关系箭头'"
+      :title="showEdgeArrows ? '隐藏关系箭头' : '显示关系箭头'"
+      @click="emit('toggle-edge-arrows')"
+    >
+      <ArrowRight :size="16" :class="showEdgeArrows ? 'text-accent' : 'text-muted'" />
+    </BaseButton>
+
     <span class="my-0.5 h-px w-6 bg-border" aria-hidden="true" />
 
     <!-- 更多：布局与数据操作收进下拉菜单，避免工具栏不断变长 -->
@@ -245,6 +264,17 @@ function onExportGraph(): void {
         >
           <GitBranch :size="14" />
           自动布局（层级）
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+          :disabled="layouting"
+          data-testid="auto-layout-clustered-btn"
+          @click="onAutoLayout('clustered')"
+        >
+          <Boxes :size="14" />
+          自动布局（按类型）
         </button>
         <button
           type="button"

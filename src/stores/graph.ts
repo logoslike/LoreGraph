@@ -251,7 +251,8 @@ export const useGraphStore = defineStore('graph', {
       this.isLayouting = true
       try {
         const positions = await computeLayout(
-          this.nodes.map((node) => ({ id: node.id })),
+          // group 只在聚集布局里使用：按节点类型分簇，其它模式忽略这个字段
+          this.nodes.map((node) => ({ id: node.id, group: node.type })),
           this.edges.map((edge) => ({ source: edge.source, target: edge.target })),
           mode,
         )

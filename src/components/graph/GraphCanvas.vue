@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  MarkerType,
   Panel,
   VueFlow,
   useNodesInitialized,
@@ -24,12 +25,13 @@ import LoreNode from './LoreNode.vue'
 import CreateNodeDialog from './CreateNodeDialog.vue'
 import RelationDialog from './RelationDialog.vue'
 import TypeManagerDialog from './TypeManagerDialog.vue'
-import { assignEdgeLanes, orderEdgesForVisualPriority } from './edge-lanes'
+import { assignEdgeLanes, choosePorts, orderEdgesForVisualPriority } from './edge-lanes'
 import type { LoreEdgeData, LoreNodeData } from './types'
 import GraphSearchPanel from './GraphSearchPanel.vue'
 import { useGraphViewport } from '@/composables/useGraphViewport'
 import { useNodeCollapse } from '@/composables/useNodeCollapse'
 import { computeCollapseVisibility } from '@/services/collapse'
+import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from '@/services/layout.service'
 import type { LayoutMode } from '@/services/layout.service'
 import { neighborhoodOf } from '@/services/neighborhood'
 import { matchesNodeQuery } from '@/services/search'
@@ -155,6 +157,10 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
         color: typeDef?.color ?? '#6366f1',
         iconName: typeDef?.icon,
         isSelected: graph.selectedNodeId === node.id,
+        isNeighbor:
+          neighborhood.value !== null &&
+          node.id !== graph.selectedNodeId &&
+          neighborhood.value.nodeIds.has(node.id),
         isMatch: isMatch(node),
         isDimmed: neighborhood.value !== null && !neighborhood.value.nodeIds.has(node.id),
         isCollapsed: parentNodeIds.value.has(node.id) && collapse.isCollapsed(node.id),
@@ -172,27 +178,91 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
  */
 const edgeLanes = computed(() => assignEdgeLanes(visibleEdges.value))
 
+/**
+ * 可见节点的盒：只读 Vue Flow 的 computedPosition/dimensions，
+ * 供普通关系按相对方位选择端口；不写回、不进入持久数据。
+ */
+const nodeRects = computed(() => {
+  const rects = new Map<string, { x: number; y: number; width: number; height: number }>()
+  for (const node of flow.nodes.value) {
+    const dimensions = node.dimensions
+    rects.set(node.id, {
+      x: node.computedPosition.x,
+      y: node.computedPosition.y,
+      width: dimensions.width > 0 ? dimensions.width : DEFAULT_NODE_WIDTH,
+      height: dimensions.height > 0 ? dimensions.height : DEFAULT_NODE_HEIGHT,
+    })
+  }
+  return rects
+})
+
+/**
+ * 给箭头颜色叠加与描边一致的透明度：关系色是十六进制时生成 8 位色，
+ * 其它值（例如未来出现的 CSS 变量）退回可读的灰蓝，避免 marker id 带括号/空格。
+ */
+function withAlpha(color: string, opacity: number): string {
+  const alpha = Math.round(Math.min(1, Math.max(0, opacity)) * 255)
+    .toString(16)
+    .padStart(2, '0')
+  const longHex = /^#([0-9a-f]{6})$/i.exec(color)
+  if (longHex) {
+    return `#${longHex[1]}${alpha}`
+  }
+  const shortHex = /^#([0-9a-f]{3})$/i.exec(color)
+  if (shortHex) {
+    const [red, green, blue] = shortHex[1]
+    return `#${red}${red}${green}${green}${blue}${blue}${alpha}`
+  }
+  return `#94a3b8${alpha}`
+}
+
 const flowEdges = computed<Edge<LoreEdgeData>[]>(() =>
   // 选中的关系最后绘制，标签与描边不会被其他关系压住
   orderEdgesForVisualPriority(visibleEdges.value, graph.selectedEdgeId).map((edge) => {
     const relation = types.relationTypeByKey(edge.relationType)
+    // 未知关系类型沿用主题的 muted 色；箭头颜色由 withAlpha 的灰蓝兜底
     const color = relation?.color ?? 'var(--muted)'
     const selected = graph.selectedEdgeId === edge.id
     // 有选中时变淡的边不显示标签；缩小到阈值以下时全部隐藏
     const dimmed = neighborhood.value !== null && !neighborhood.value.edgeIds.has(edge.id)
+    const emphasized =
+      !dimmed && !selected && neighborhood.value !== null && neighborhood.value.edgeIds.has(edge.id)
     const label = edge.label && !dimmed && edgeLabelsVisible.value ? edge.label : undefined
+    // 平行/双向/自环沿用右出左入；普通边按相对方位选相向端口（仅视图映射）
+    const lane = edgeLanes.value.get(edge.id) ?? 0
+    const sourceRect = nodeRects.value.get(edge.source)
+    const targetRect = nodeRects.value.get(edge.target)
+    const ports =
+      lane !== 0 || edge.source === edge.target || !sourceRect || !targetRect
+        ? { sourceHandle: 'right', targetHandle: 'left' }
+        : choosePorts(sourceRect, targetRect)
+    // 关联边保持原色并加粗；非关联边保留可读性，但退到背景里
+    const opacity = dimmed ? 0.2 : selected || emphasized ? 1 : 0.8
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       type: 'loreEdge',
-      data: { lane: edgeLanes.value.get(edge.id) ?? 0 },
+      sourceHandle: ports.sourceHandle,
+      targetHandle: ports.targetHandle,
+      data: { lane },
       label,
       style: {
         stroke: color,
-        strokeWidth: selected ? 2.5 : 1.6,
-        opacity: dimmed ? 0.15 : selected ? 1 : 0.8,
+        strokeWidth: selected ? 2.5 : emphasized ? 2.15 : 1.6,
+        opacity,
       },
+      // 所有边共用同一个全局开关；颜色跟随关系色和当前高亮/变淡态
+      markerEnd: ui.showEdgeArrows
+        ? {
+            type: MarkerType.ArrowClosed,
+            color: withAlpha(color, opacity),
+            width: 11,
+            height: 11,
+            markerUnits: 'userSpaceOnUse',
+            strokeWidth: 1,
+          }
+        : undefined,
       labelStyle: { fill: 'var(--fg)', fontSize: '11px' },
       labelBgStyle: { fill: 'var(--bg)', fillOpacity: 0.85 },
       // 圆角 + 内边距，标签不再紧贴文字
@@ -617,8 +687,10 @@ defineExpose({
           :can-restore-layout="graph.canRestoreLayout"
           :search-open="searchOpen"
           :search-active="searchQuery !== ''"
+          :show-edge-arrows="ui.showEdgeArrows"
           @create-node="openCreateDialog"
           @toggle-search="toggleSearch"
+          @toggle-edge-arrows="ui.toggleEdgeArrows()"
           @toggle-focus="toggleFocus"
           @manage-types="typeManagerOpen = true"
           @fit-view="fitView"

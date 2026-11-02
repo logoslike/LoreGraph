@@ -24,8 +24,20 @@ export interface UiToast {
 }
 
 const THEME_STORAGE_KEY = 'loregraph.theme'
+const EDGE_ARROWS_STORAGE_KEY = 'loregraph.show-edge-arrows'
 const DEFAULT_TOAST_DURATION = 4000
 const toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** 关系箭头是全局视图偏好：首次使用默认开启，存储不可用时退化为会话内状态。 */
+function readShowEdgeArrows(): boolean {
+  try {
+    return typeof localStorage === 'undefined'
+      ? true
+      : localStorage.getItem(EDGE_ARROWS_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
 
 interface UiState {
   theme: ThemeMode
@@ -34,6 +46,8 @@ interface UiState {
   searchQuery: string
   activeTypeKeys: string[]
   helpOpen: boolean
+  /** 是否给所有关系显示方向箭头；全局开关，默认开启。 */
+  showEdgeArrows: boolean
   /** 聚焦模式的中心节点 id；只在本会话内有效，不持久化。 */
   focusNodeId: string | null
   toasts: UiToast[]
@@ -48,6 +62,7 @@ export const useUiStore = defineStore('ui', {
     searchQuery: '',
     activeTypeKeys: [],
     helpOpen: false,
+    showEdgeArrows: readShowEdgeArrows(),
     focusNodeId: null,
     toasts: [],
   }),
@@ -105,6 +120,17 @@ export const useUiStore = defineStore('ui', {
     },
     exitFocus(): void {
       this.focusNodeId = null
+    },
+    /** 切换全部关系的箭头显示；没有逐边开关，所有边一律跟随这个布尔值。 */
+    toggleEdgeArrows(): void {
+      this.showEdgeArrows = !this.showEdgeArrows
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(EDGE_ARROWS_STORAGE_KEY, String(this.showEdgeArrows))
+        }
+      } catch {
+        // 存储不可用时只影响下次启动的默认值，本次会话仍然生效
+      }
     },
     /** 显示右下角通知；返回 toast id 便于手动关闭。 */
     notify(message: string, options: ToastOptions = {}): string {

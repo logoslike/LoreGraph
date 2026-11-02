@@ -84,7 +84,7 @@ afterEach(() => {
 })
 
 describe('graph store 自动布局', () => {
-  it.each(['force', 'layered'] as const)(
+  it.each(['force', 'layered', 'clustered'] as const)(
     '%s 模式只改坐标：名称、描述、属性、类型与关系都不变，并落库',
     async (mode) => {
       const { universe, store } = await seedWorld()
@@ -273,5 +273,72 @@ describe('graph store 自动布局', () => {
     await expect(store.applyLayout('force')).resolves.toBeUndefined()
     expect(store.canRestoreLayout).toBe(false)
     expect(store.isLayouting).toBe(false)
+  })
+
+  it('clustered 也只走一次批量接口，不触发逐节点自动保存', async () => {
+    const { universe, store } = await seedWorld()
+    const batch = vi.spyOn(services.graph, 'updateNodePositions')
+    const updateNode = vi.spyOn(services.graph, 'updateNode')
+    const schedule = vi.spyOn(services.autosave, 'schedule')
+
+    await store.applyLayout('clustered')
+
+    expect(batch).toHaveBeenCalledTimes(1)
+    expect(batch.mock.calls[0][0]).toBe(universe.id)
+    expect(updateNode).not.toHaveBeenCalled()
+    expect(schedule).not.toHaveBeenCalled()
+    expect(await persistedPositions(universe.id)).toEqual(positions(store))
+  })
+
+  it('clustered 把同类型节点聚成一簇：不同类型包围盒不重叠', async () => {
+    const { store } = await seedWorld(6)
+    await store.applyLayout('clustered')
+
+    const bounds = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>()
+    for (const node of store.nodes) {
+      const next = {
+        minX: node.position.x,
+        minY: node.position.y,
+        maxX: node.position.x + layoutService.DEFAULT_NODE_WIDTH,
+        maxY: node.position.y + layoutService.DEFAULT_NODE_HEIGHT,
+      }
+      const current = bounds.get(node.type)
+      if (!current) {
+        bounds.set(node.type, next)
+        continue
+      }
+      current.minX = Math.min(current.minX, next.minX)
+      current.minY = Math.min(current.minY, next.minY)
+      current.maxX = Math.max(current.maxX, next.maxX)
+      current.maxY = Math.max(current.maxY, next.maxY)
+    }
+
+    expect([...bounds.keys()].sort()).toEqual(['character', 'location'])
+    const [first, second] = [...bounds.values()]
+    const disjoint =
+      first.maxX <= second.minX ||
+      second.maxX <= first.minX ||
+      first.maxY <= second.minY ||
+      second.maxY <= first.minY
+    expect(disjoint).toBe(true)
+  })
+
+  it('clustered 恢复布局前坐标时，快照、关系与节点内容都不变', async () => {
+    const { universe, store } = await seedWorld(6)
+    const originalPositions = positions(store)
+    const originalEdges = edgeSignature(store)
+
+    await store.applyLayout('clustered')
+    expect(positions(store)).not.toEqual(originalPositions)
+    expect(edgeSignature(store)).toEqual(originalEdges)
+
+    await store.restoreLayout()
+
+    // 坐标回到聚集布局前（与 force/layered 共用同一份首快照）
+    expect(positions(store)).toEqual(originalPositions)
+    expect(await persistedPositions(universe.id)).toEqual(originalPositions)
+    expect(store.canRestoreLayout).toBe(false)
+    // 关系（包括跨类型关系）没有被布局改动或丢弃
+    expect(edgeSignature(store)).toEqual(originalEdges)
   })
 })

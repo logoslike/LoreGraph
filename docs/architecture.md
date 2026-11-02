@@ -115,7 +115,7 @@ Services own the business rules and are constructed with a `Repositories` bundle
 | `type.service.ts`     | Entity type CRUD; refuses to delete a type that is still referenced and reports the reference count.                                                                                                                            |
 | `import.service.ts`   | Two-phase import: `analyzeImport` parses and validates a `.loregraph.json` file read-only and returns a preview; `commitImport` writes that plan in one transaction, either as a new world or merged into an existing one.      |
 | `export.service.ts`   | Builds a `LoreUniverseFile` for one world, or a `LoreGraphFile` for a node selection (only edges whose two endpoints are selected, and only the types they reference); triggers the browser download.                           |
-| `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default) and `layered` modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.                                                |
+| `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default), `layered`, and `clustered` (grouped by node type) modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.           |
 | `autosave.ts`         | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
 | `search.ts`           | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
 | `neighborhood.ts`     | Pure 1-hop neighbourhood of a selection: the node, its direct neighbours and incident edges, or a relation and its two endpoints. Ignores dangling edges; backs adjacency highlighting and Focus Mode.                          |
@@ -158,7 +158,7 @@ need one narrow behaviour.
   dragging from a node handle into a dialog (relation type + optional label), validates
   self-loops and duplicates, highlights search matches, fades everything outside the selected
   element's 1-hop neighbourhood, and offers fit-view, zoom, Focus Mode, delete, and type-manager
-  actions plus a 更多 menu with both layout modes, 恢复布局前位置, and graph-snippet
+  actions plus a 更多 menu with all three layout modes, 恢复布局前位置, and graph-snippet
   import/export. The inspector edits the selected node or edge, lists a node's incident
   relations, and shows world statistics plus world export/import actions when nothing is
   selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
@@ -221,14 +221,21 @@ not when the user changes their mind.
 
 ## Automatic layout
 
-The graph toolbar's 更多 menu offers 自动布局（力导向） (the default), 自动布局（层级）, and
-恢复布局前位置.
+The graph toolbar's 更多 menu offers 自动布局（力导向） (the default), 自动布局（层级）,
+自动布局（按类型）, and 恢复布局前位置.
 
 `computeLayout(nodes, edges, mode)` in `src/services/layout.service.ts` drives elkjs: `force`
-runs 120 iterations with a fixed random seed, so the same graph always yields the same result, and
-`layered` lays components out top-down. Node size is estimated at 210×52 when Vue Flow has not
-measured a node yet. Edges with a missing endpoint or a self-loop are dropped before layout, so
-malformed data cannot make ELK fail. The function only returns integer top-left coordinates.
+runs 120 iterations with a fixed random seed, so the same graph always yields the same result,
+`layered` lays components out top-down, and `clustered` groups nodes by the optional `group` key
+(the store passes `node.type`), lays out each group with the `force` options, and packs the groups
+by their real bounding boxes (240 px horizontal and 200 px vertical gaps, 40 px outer padding) so
+a large group cannot overlap its neighbour. Cross-group edges are not passed to elkjs for the
+cluster-internal layout, but they are neither removed nor hidden: the canvas still draws them
+between the groups. A single group (or nodes without a group) falls back to plain `force`. Node
+size is estimated at 210×52 when Vue Flow has not measured a node yet. Edges with a missing
+endpoint or a self-loop are dropped before layout, so malformed data cannot make ELK fail. The
+function only returns integer top-left coordinates, and it runs only after the user picks a layout
+menu item — loading, switching worlds, importing, and type filtering never lay out the graph.
 
 `graph.applyLayout(mode)` is the write path:
 
@@ -387,8 +394,9 @@ Adding cross-tab coordination (a `BroadcastChannel` invalidate-and-reload, or De
   format; bump `formatVersion` only for breaking changes.
 - **New default type seeds** — edit `DEFAULT_NODE_TYPE_SEEDS` / `DEFAULT_RELATION_TYPE_SEEDS` in
   `src/services/universe.service.ts`. These only affect newly created worlds.
-- **New layout modes** — extend `LayoutMode` and `layoutOptions` in
-  `src/services/layout.service.ts`, then expose the mode in `GraphToolbar.vue`.
+- **New layout modes** — extend `LayoutMode` and, for whole-graph modes, `layoutOptions` in
+  `src/services/layout.service.ts`, then expose the mode in `GraphToolbar.vue`. `clustered` shows
+  how a mode can compose the existing per-graph layout instead of adding ELK options.
 - **New icons** — add the Lucide component to `LUCIDE_ICONS` in `src/models/icons.ts`.
 - **Replacing the sample world** — swap `public/examples/emberfall.json`; the path is declared as
   `SAMPLE_UNIVERSE_PATH` in `src/services/universe.service.ts`.

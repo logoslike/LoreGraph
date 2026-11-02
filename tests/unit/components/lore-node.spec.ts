@@ -9,9 +9,10 @@ vi.mock('@vue-flow/core', () => ({
   Handle: {
     name: 'Handle',
     props: ['id', 'type', 'position', 'connectable'],
-    template: '<span class="vue-flow__handle" />',
+    template:
+      '<span class="vue-flow__handle" :data-handle-id="id" :data-handle-type="type" :data-position="position" :data-connectable="String(connectable)" />',
   },
-  Position: { Left: 'left', Right: 'right' },
+  Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
 }))
 
 function buildData(overrides: Partial<LoreNodeData> = {}): LoreNodeData {
@@ -20,6 +21,7 @@ function buildData(overrides: Partial<LoreNodeData> = {}): LoreNodeData {
     typeLabel: '角色',
     color: '#6366f1',
     isSelected: false,
+    isNeighbor: false,
     isMatch: false,
     isDimmed: false,
     isCollapsed: false,
@@ -120,6 +122,41 @@ describe('LoreNode 折叠/展开交互', () => {
 
     expect(onToggleCollapse).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[data-testid="lore-node"]').attributes('data-collapsed')).toBe('true')
+    wrapper.unmount()
+  })
+})
+
+describe('LoreNode 端口', () => {
+  it('保留 right/left 可连接端口，并补 6 个不可交互显示端口', () => {
+    const wrapper = mountNode(buildData())
+    const handles = wrapper.findAll('.vue-flow__handle')
+    const summary = handles.map((handle) => ({
+      id: handle.attributes('data-handle-id'),
+      type: handle.attributes('data-handle-type'),
+      position: handle.attributes('data-position'),
+      connectable: handle.attributes('data-connectable'),
+    }))
+
+    expect(summary).toHaveLength(8)
+    expect(
+      summary.filter((handle) => handle.connectable === 'true').map((handle) => handle.id),
+    ).toEqual(['left', 'right'])
+    expect(
+      summary.filter((handle) => handle.connectable === 'false').map((handle) => handle.id),
+    ).toEqual([
+      'source-left',
+      'source-top',
+      'source-bottom',
+      'target-right',
+      'target-top',
+      'target-bottom',
+    ])
+    expect(
+      summary.filter((handle) => handle.type === 'source').map((handle) => handle.position),
+    ).toEqual(['right', 'left', 'top', 'bottom'])
+    expect(
+      summary.filter((handle) => handle.type === 'target').map((handle) => handle.position),
+    ).toEqual(['left', 'right', 'top', 'bottom'])
     wrapper.unmount()
   })
 })

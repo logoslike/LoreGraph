@@ -31,10 +31,12 @@ function toggleCollapse(): void {
     data-testid="lore-node"
     :data-node-id="id"
     :data-selected="data.isSelected ? 'true' : 'false'"
+    :data-neighbor="data.isNeighbor ? 'true' : 'false'"
     :data-dimmed="data.isDimmed ? 'true' : 'false'"
     :data-collapsed="data.isCollapsed ? 'true' : 'false'"
     :class="{
       'is-selected': data.isSelected,
+      'is-neighbor': data.isNeighbor,
       'is-match': data.isMatch,
       'is-dimmed': data.isDimmed,
       'is-collapsed': data.isCollapsed,
@@ -42,9 +44,52 @@ function toggleCollapse(): void {
     }"
     :style="{ '--lore-color': color }"
   >
-    <!-- 左右各一个连接点：从右侧拖出、连到左侧 -->
+    <!-- 左右各一个连接点：从右侧拖出、连到左侧；拖拽交互只认这两个 -->
     <Handle id="left" type="target" :position="Position.Left" :connectable="connectable" />
     <Handle id="right" type="source" :position="Position.Right" :connectable="connectable" />
+    <!-- 自动接线用的显示端口：不可交互、不可见，只用于按相对方位取点；边通过 id 引用 -->
+    <Handle
+      id="source-left"
+      type="source"
+      :position="Position.Left"
+      :connectable="false"
+      class="lore-node__port"
+    />
+    <Handle
+      id="source-top"
+      type="source"
+      :position="Position.Top"
+      :connectable="false"
+      class="lore-node__port"
+    />
+    <Handle
+      id="source-bottom"
+      type="source"
+      :position="Position.Bottom"
+      :connectable="false"
+      class="lore-node__port"
+    />
+    <Handle
+      id="target-right"
+      type="target"
+      :position="Position.Right"
+      :connectable="false"
+      class="lore-node__port"
+    />
+    <Handle
+      id="target-top"
+      type="target"
+      :position="Position.Top"
+      :connectable="false"
+      class="lore-node__port"
+    />
+    <Handle
+      id="target-bottom"
+      type="target"
+      :position="Position.Bottom"
+      :connectable="false"
+      class="lore-node__port"
+    />
 
     <span class="lore-node__bar" aria-hidden="true" />
     <span class="lore-node__icon" aria-hidden="true">
@@ -117,6 +162,14 @@ function toggleCollapse(): void {
 /* 收起态：轻微染色 + 隐藏数量徽标，保留节点本身仍可选中与拖动 */
 .lore-node.is-collapsed {
   background: color-mix(in srgb, var(--lore-color) 6%, var(--bg));
+}
+
+/* 1 跳邻域节点：用类型色的细描边提示「与选中项有关」，但不抢选中节点的焦点 */
+.lore-node.is-neighbor {
+  border-color: color-mix(in srgb, var(--lore-color) 55%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lore-color) 18%, transparent),
+    0 2px 8px rgb(0 0 0 / 0.08);
 }
 
 /* 相邻高亮：与选中项无关的节点变淡，与搜索命中可叠加 */
@@ -237,6 +290,12 @@ function toggleCollapse(): void {
   background: var(--border);
   opacity: 0;
   transition: opacity 0.15s ease;
+}
+
+/* 自动接线的显示端口：始终不可见、不拦截指针，只参与按方位取点 */
+.lore-node :deep(.lore-node__port) {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 .lore-node:hover :deep(.vue-flow__handle),

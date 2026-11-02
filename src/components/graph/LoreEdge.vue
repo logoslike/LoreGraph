@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { BaseEdge, type EdgeProps, type GraphNode } from '@vue-flow/core'
+import { BaseEdge, useVueFlow, type EdgeProps, type GraphNode } from '@vue-flow/core'
 import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from '@/services/layout.service'
 import { computeLanedEdgeGeometry, type Rect } from './edge-lanes'
 import type { LoreEdgeData } from './types'
 
 /**
- * 自定义关系渲染：默认仍走 Vue Flow 的 smoothstep；
- * 当同一对节点之间存在多条关系时由 GraphCanvas 传入 lane，
- * 绕到节点上方/下方分道，避免连线与标签完全重叠。
+ * 自定义关系渲染：所有关系都由 edge-lanes 生成连续三次贝塞尔路径。
+ * 同一对节点之间存在多条关系时 GraphCanvas 传入 lane，
+ * 曲线绕到节点上方/下方分道，避免连线与标签完全重叠。
  */
 const props = defineProps<EdgeProps<LoreEdgeData>>()
+
+/** 只读取可见节点的盒，作为普通关系避障候选的输入；不写回、不进入持久数据。 */
+const flow = useVueFlow()
+const obstacles = computed(() =>
+  flow.nodes.value
+    .filter((node) => node.id !== props.source && node.id !== props.target)
+    .map(rectOf),
+)
 
 function rectOf(node: GraphNode): Rect {
   const dimensions = node.dimensions
@@ -33,6 +41,7 @@ const geometry = computed(() =>
     targetPosition: props.targetPosition,
     sourceRect: rectOf(props.sourceNode),
     targetRect: rectOf(props.targetNode),
+    obstacles: obstacles.value,
   }),
 )
 </script>

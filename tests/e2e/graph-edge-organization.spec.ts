@@ -18,7 +18,12 @@ const WORLD_NAME = '双向关系'
 const TIMESTAMP = 1767225600000
 const UNIVERSE_ID = 'u-reciprocal'
 
-function buildReciprocalWorld(): Record<string, unknown> {
+function buildReciprocalWorld(
+  positions: readonly [{ x: number; y: number }, { x: number; y: number }] = [
+    { x: 0, y: 0 },
+    { x: 400, y: 0 },
+  ],
+): Record<string, unknown> {
   const type = (
     id: string,
     scope: 'node' | 'relation',
@@ -38,14 +43,19 @@ function buildReciprocalWorld(): Record<string, unknown> {
     updatedAt: TIMESTAMP,
   })
 
-  const node = (id: string, typeKey: string, name: string, x: number): Record<string, unknown> => ({
+  const node = (
+    id: string,
+    typeKey: string,
+    name: string,
+    position: { x: number; y: number },
+  ): Record<string, unknown> => ({
     id,
     universeId: UNIVERSE_ID,
     type: typeKey,
     name,
     description: '',
     properties: {},
-    position: { x, y: 0 },
+    position,
     createdAt: TIMESTAMP,
     updatedAt: TIMESTAMP,
   })
@@ -86,8 +96,8 @@ function buildReciprocalWorld(): Record<string, unknown> {
       type('t-shelter', 'relation', 'shelter', '庇护', '#f59e0b', 1),
     ],
     nodes: [
-      node('n-lanzhou', 'character', '澜舟', 0),
-      node('n-chenzhongwan', 'location', '沉钟湾', 400),
+      node('n-lanzhou', 'character', '澜舟', positions[0]),
+      node('n-chenzhongwan', 'location', '沉钟湾', positions[1]),
     ],
     edges: [
       edge('e-lanzhou-guards', 'n-lanzhou', 'n-chenzhongwan', 'guard', '驻守'),
@@ -97,10 +107,14 @@ function buildReciprocalWorld(): Record<string, unknown> {
 }
 
 /** 在世界列表页导入固定坐标的双向关系世界并打开，停在视口稳定、无选中。 */
-async function reciprocalWorld(page: Page, testInfo: TestInfo): Promise<void> {
+async function reciprocalWorld(
+  page: Page,
+  testInfo: TestInfo,
+  positions?: readonly [{ x: number; y: number }, { x: number; y: number }],
+): Promise<void> {
   const file = testInfo.outputPath('reciprocal-world.loregraph.json')
   await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(buildReciprocalWorld(), null, 2), 'utf8')
+  await writeFile(file, JSON.stringify(buildReciprocalWorld(positions), null, 2), 'utf8')
 
   await useEmptyLibrary(page)
   await gotoUniverses(page)
@@ -123,6 +137,41 @@ async function reciprocalWorld(page: Page, testInfo: TestInfo): Promise<void> {
     throw new Error('画布不可见，无法取消选中')
   }
   await page.mouse.click(box.x + box.width - 60, box.y + 60)
+}
+
+/** 把 SVG path 采样成屏幕坐标点，用于检查连线是否进入节点盒内部。 */
+async function pathSamples(page: Page, index: number): Promise<{ x: number; y: number }[]> {
+  return page
+    .locator('.vue-flow__edge-path')
+    .nth(index)
+    .evaluate((element, step) => {
+      const path = element as SVGPathElement
+      const matrix = path.getScreenCTM()
+      if (matrix === null) {
+        return []
+      }
+      const points: { x: number; y: number }[] = []
+      for (let distance = 0; distance <= path.getTotalLength(); distance += step) {
+        const point = path.getPointAtLength(distance)
+        const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix)
+        points.push({ x: screen.x, y: screen.y })
+      }
+      return points
+    }, 2)
+}
+
+/** 屏幕坐标下某点是否在节点盒内部（缩进 1px，贴边不算）。 */
+function insideBox(
+  point: { x: number; y: number },
+  box: { x: number; y: number; width: number; height: number },
+): boolean {
+  const inset = 1
+  return (
+    point.x > box.x + inset &&
+    point.x < box.x + box.width - inset &&
+    point.y > box.y + inset &&
+    point.y < box.y + box.height - inset
+  )
 }
 
 /** 关系的标签盒（SVG text 的实际渲染包围盒）。 */
@@ -172,5 +221,68 @@ test.describe('LG-306 双向关系分道', () => {
       (guardAbove && shelterBelow) || (guardBelow && shelterAbove),
       `标签没有落在节点两侧：guard=${JSON.stringify(guard)} shelter=${JSON.stringify(shelter)} node=${JSON.stringify(node)}`,
     ).toBe(true)
+  })
+
+  test('纵向错位 96/128 时两条分道线都不进入节点盒内部', async ({ page }, testInfo) => {
+    await reciprocalWorld(page, testInfo, [
+      { x: 0, y: 0 },
+      { x: 96, y: 128 },
+    ])
+
+    const sourceBox = await page.getByTestId('lore-node').filter({ hasText: '澜舟' }).boundingBox()
+    const targetBox = await page
+      .getByTestId('lore-node')
+      .filter({ hasText: '沉钟湾' })
+      .boundingBox()
+    if (sourceBox === null || targetBox === null) {
+      throw new Error('找不到节点包围盒')
+    }
+
+    for (let index = 0; index < 2; index += 1) {
+      const samples = await pathSamples(page, index)
+      expect(samples.length, '边路径没有采样点').toBeGreaterThan(0)
+      for (const point of samples) {
+        expect(insideBox(point, sourceBox), `第 ${index} 条分道线穿过了源节点`).toBe(false)
+        expect(insideBox(point, targetBox), `第 ${index} 条分道线穿过了目标节点`).toBe(false)
+      }
+    }
+  })
+
+  test('标签锚点恰好为 0 时仍然渲染两个标签', async ({ page }, testInfo) => {
+    await reciprocalWorld(page, testInfo, [
+      { x: -300, y: 0 },
+      { x: 90, y: 0 },
+    ])
+
+    await expect(page.locator('.vue-flow__edge-text')).toHaveCount(2)
+    const guard = await labelBox(page, '驻守')
+    const shelter = await labelBox(page, '庇护')
+    const overlap =
+      guard.x < shelter.x + shelter.width &&
+      guard.x + guard.width > shelter.x &&
+      guard.y < shelter.y + shelter.height &&
+      guard.y + guard.height > shelter.y
+    expect(overlap, '零值标签锚点导致标签消失或重叠').toBe(false)
+  })
+
+  test('选中的关系移动到最后一个绘制 SVG', async ({ page }, testInfo) => {
+    await reciprocalWorld(page, testInfo)
+
+    await page
+      .locator('.vue-flow__edge')
+      .first()
+      .evaluate((element) => {
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+      })
+    await expect(page.locator('.vue-flow__edge.selected')).toHaveCount(1)
+
+    await expect
+      .poll(async () =>
+        page.locator('.vue-flow__edges').evaluateAll((layers) => {
+          const last = layers[layers.length - 1]
+          return Boolean(last?.querySelector('.vue-flow__edge.selected'))
+        }),
+      )
+      .toBe(true)
   })
 })
