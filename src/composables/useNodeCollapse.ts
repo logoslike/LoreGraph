@@ -2,16 +2,6 @@ import { computed, ref, toValue, watch, type ComputedRef, type MaybeRefOrGetter 
 import type { CollapseEdge } from '@/services/collapse'
 import { revealedCollapsedIds } from '@/services/collapse'
 
-/** 按世界保存的画布节点折叠偏好；只存节点 id，不进入节点模型与导出文件。 */
-export interface NodeCollapsePreference {
-  collapsedIds: string[]
-}
-
-/** 首次使用（无本地记录）时没有折叠节点。 */
-export const NODE_COLLAPSE_DEFAULTS: Readonly<NodeCollapsePreference> = {
-  collapsedIds: [],
-}
-
 const STORAGE_PREFIX = 'loregraph.node-collapse'
 
 /** 某个世界的折叠偏好存储键：折叠是视图状态，按世界隔离。 */

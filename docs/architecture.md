@@ -118,6 +118,7 @@ Services own the business rules and are constructed with a `Repositories` bundle
 | `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default), `layered`, and `clustered` (grouped by node type) modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.           |
 | `autosave.ts`         | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
 | `search.ts`           | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
+| `collapse.ts`         | Pure helpers for node folding: walks the edge list to find the descendants hidden by a folded node and the hidden count per folded node, and reveals the collapsed ancestors that hide a target node.                           |
 | `neighborhood.ts`     | Pure 1-hop neighbourhood of a selection: the node, its direct neighbours and incident edges, or a relation and its two endpoints. Ignores dangling edges; backs adjacency highlighting and Focus Mode.                          |
 | `errors.ts`           | `LoreGraphError` base class plus `GraphError` and `TypeInUseError`.                                                                                                                                                             |
 | `index.ts`            | Composition root: `services` singleton wired to Dexie (`createDexieRepositories(createLoreDatabase())`).                                                                                                                        |
@@ -144,6 +145,12 @@ need one narrow behaviour.
 - `composables/useTheme.ts`, `useToast.ts`, `useShortcuts.ts`, `useGraphViewport.ts` —
   read-only theme access, notification helpers (including the 8-second undo toast), the global
   keyboard shortcuts, and viewport fit/zoom/centre-preservation operations for the canvas.
+- `composables/useNodeCollapse.ts` — the fold state of the canvas: which nodes are folded, per
+  world, persisted in `localStorage` under `loregraph.node-collapse.<universeId>` and sanitised on
+  read; folding is view state and never enters the data model or the export files.
+- `composables/useSidebarPreferences.ts` — collapsed groups of the sidebar node library, also per
+  world and kept in `localStorage`. A search expands matching groups temporarily without
+  overwriting the stored preference.
 
 ### Views and components (`src/views/`, `src/components/`)
 
@@ -152,16 +159,20 @@ need one narrow behaviour.
   actions (with confirmation); the import preview lists validation issues before anything is
   written; theme toggle; loads a built-in Chinese fantasy sample world on first run when the
   library is empty.
-- `/u/:universeId` — workspace: a three-pane shell (sidebar, graph canvas, inspector). The
-  sidebar holds the world switcher, node search, create-node action, type filters with counts,
-  and the filtered node list. The canvas renders nodes and relations, creates relations by
-  dragging from a node handle into a dialog (relation type + optional label), validates
-  self-loops and duplicates, highlights search matches, fades everything outside the selected
-  element's 1-hop neighbourhood, and offers fit-view, zoom, Focus Mode, delete, and type-manager
-  actions plus a 更多 menu with all three layout modes, 恢复布局前位置, and graph-snippet
-  import/export. The inspector edits the selected node or edge, lists a node's incident
-  relations, and shows world statistics plus world export/import actions when nothing is
-  selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
+- `/u/:universeId` — workspace: a three-pane shell (sidebar, graph canvas, inspector) under a
+  fixed 48 px context header that shows the current world name and view. The sidebar collapses to
+  a 56 px rail, holds the world switcher, node search, a collapsible type-filter section with
+  counts, and the node list grouped by type (colour, label, count per group, per-group and
+  whole-list collapse). The canvas renders nodes and relations, creates relations by dragging
+  from a node handle into a dialog (relation type + optional label), validates self-loops and
+  duplicates, highlights search matches, fades everything outside the selected element's 1-hop
+  neighbourhood, folds a node's descendants on demand, and offers fit-view, zoom, Focus Mode,
+  delete, a global direction-arrow switch, and type-manager actions plus a 更多 menu with all
+  three layout modes (force, layered, clustered by type), 恢复布局前位置, and graph-snippet
+  import/export. Relations between the same pair of nodes are spread onto separate lanes by
+  `edge-lanes.ts`, so parallel and mutual relations stay distinguishable. The inspector edits the
+  selected node or edge, lists a node's incident relations, and shows world statistics plus world
+  export/import actions when nothing is selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
   `Delete`/`Backspace` delete selection, `Esc` cancel/close and leave Focus Mode,
   `Ctrl/⌘+K` focus search, `?` shortcut help.
 - `/:pathMatch(.*)*` — not found page.
@@ -169,8 +180,9 @@ need one narrow behaviour.
 Components are grouped as `common/` (primitives, color/icon pickers, confirm, help, and import
 preview dialogs), `layout/` (app shell, sidebar, inspector, panel toggles), `editor/` (node/edge
 editors, property rows, type select), `universe/` (the shared world create/edit form), and
-`graph/` (`GraphCanvas`, `LoreNode`, toolbar, create-node/relation dialogs, graph import/export
-dialogs, and the type manager). The canvas is built on `@vue-flow/core`
+`graph/` (`GraphCanvas`, `LoreNode`, `LoreEdge` with its lane geometry in `edge-lanes.ts`, the
+toolbar, the search panel, create-node/relation dialogs, graph import/export dialogs, and the
+type manager). The canvas is built on `@vue-flow/core`
 with the background, controls, and minimap add-ons; nodes are one custom Vue Flow node type
 mapped from store state, and dragging a node writes its snapped position back to the store on
 drag stop. Below 900 px the side panels become overlay drawers.

@@ -54,6 +54,19 @@ All screenshots are captured at 1440×900.
 - **Search and filters.** Find nodes by name (case-insensitive substring), browse the matches
   in the sidebar node list, see them highlighted on the canvas, and show or hide nodes by type
   with per-type counts.
+- **Grouped node library.** The sidebar lists nodes grouped by type — type colour, label, and
+  count per group — with per-group and whole-list collapse. The collapse preference is kept per
+  world in `localStorage`, and a search temporarily expands the groups that match. The type
+  filter is a separate collapsible section that controls canvas visibility, not the list.
+- **Node folding.** A node with outgoing relations can be folded: its descendants and the
+  relations reaching them leave the canvas, and a badge on the folded node counts what is hidden.
+  Folding is view state, stored per world; it never enters the data model or the export files.
+- **Readable relations.** Parallel and mutual relations between the same pair of nodes are spread
+  onto separate lanes with labels on either side instead of stacking on one path, and a toolbar
+  switch turns the direction arrows on or off for every relation at once.
+- **Workspace header and clustering.** A context header names the current world and view;
+  更多 → 自动布局（按类型）clusters nodes by type before arranging the clusters, and cross-type
+  relations stay visible.
 - **Adjacency highlighting and Focus Mode.** Selecting a node keeps it, its direct neighbours,
   and its relations sharp while everything else fades; selecting a relation keeps it and its two
   endpoints. Press `F` (or the toolbar button) to show only that node and its direct neighbours,
@@ -99,7 +112,7 @@ All screenshots are captured at 1440×900.
 | State        | Pinia                                                          |
 | Routing      | Vue Router 5 (HTML5 history mode)                              |
 | Graph canvas | Vue Flow (`@vue-flow/core` with background, controls, minimap) |
-| Layout       | elkjs (force-directed and layered)                             |
+| Layout       | elkjs (force-directed, layered, clustered by type)             |
 | Persistence  | Dexie 4 over IndexedDB (database `loregraph`)                  |
 | Validation   | Zod 4                                                          |
 | Icons        | Lucide (`@lucide/vue`)                                         |
@@ -131,8 +144,8 @@ npm run lint
 npm run test:unit
 ```
 
-The suite contains **204 unit tests across 27 files** (Vitest with jsdom and
-`fake-indexeddb`) and **58 end-to-end tests across 12 files** (Playwright, Chromium). Install
+The suite contains **320 unit tests across 34 files** (Vitest with jsdom and
+`fake-indexeddb`) and **79 end-to-end tests across 18 files** (Playwright, Chromium). Install
 the browser once and run the E2E suite:
 
 ```bash

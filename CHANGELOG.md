@@ -5,6 +5,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Workspace header: a fixed 48 px context bar shows the current world name and view (世界名 /
+  Graph); the main area is a vertical flex column, so the canvas fills the height below it.
+- Grouped node library: sidebar nodes are grouped by type, each group header showing the type
+  colour, label, and count, with per-group and whole-list collapse. The collapse preference is
+  kept per world in `localStorage`; a search temporarily expands the matching groups.
+- Node folding: a node with outgoing relations can be folded, hiding its descendants and the
+  relations reaching them, with a badge counting what is hidden. Folding is view state and never
+  enters the data model or the export files.
+- Relation lanes: parallel and mutual relations between the same pair of nodes are routed onto
+  separate lanes with labels on either side instead of stacking on one path.
+- Clustered layout: 更多 → 自动布局（按类型）clusters nodes by type before arranging the clusters;
+  cross-type relations stay visible.
+- A global switch in the graph toolbar that shows or hides direction arrows on every relation.
+
+### Changed
+
+- Desktop layout is a three-column grid (sidebar 264 px, collapsed rail 56 px, inspector 336 px),
+  so collapsing a panel widens the canvas instead of overlapping it; below 900 px both panels are
+  still overlay drawers.
+
+### Removed
+
+- Unused scaffolding components `BaseInput`, `BaseSelect`, and `ColorField`, an unused
+  `createMemoryRepositories` re-export in the repositories barrel, a Tailwind colour mapping with
+  no class using it, and an unused node-collapse defaults constant.
+
 ## [0.2.0] - 2026-11-01
 
 **Breaking:** world exports now declare `format: "loregraph.universe"` instead of `"loregraph"`,

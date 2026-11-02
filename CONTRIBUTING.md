@@ -61,12 +61,13 @@ The dev server starts on <http://127.0.0.1:5173>.
 │  ├─ repositories/          Persistence interfaces + memory and Dexie adapters
 │  ├─ services/              Business rules, validation, import/export, autosave
 │  ├─ stores/                Pinia stores: UI state and graph state
-│  ├─ composables/           useTheme, useToast, useShortcuts
+│  ├─ composables/           useTheme, useToast, useShortcuts, useGraphViewport,
+│  │                         useNodeCollapse, useSidebarPreferences
 │  ├─ components/
 │  │  ├─ common/             Reusable primitives and dialogs
 │  │  ├─ layout/             App shell, sidebar, inspector, panel toggles
 │  │  ├─ editor/             Node/edge editors, property rows, type select
-│  │  └─ graph/              Vue Flow canvas and custom node rendering
+│  │  └─ graph/              Vue Flow canvas, custom nodes/edges, lanes, toolbar
 │  ├─ views/                 Route-level views
 │  ├─ router/                Vue Router configuration
 │  ├─ styles/                Tailwind entry, design tokens, theme variables
@@ -78,7 +79,7 @@ The dev server starts on <http://127.0.0.1:5173>.
 └─ .github/                  CI workflow, issue and pull request templates
 ```
 
-`src/assets/` is intentionally absent in v0.1: the application ships no binary assets of its own,
+`src/assets/` is intentionally absent: the application ships no binary assets of its own,
 so the favicon lives in `public/` and icons come from `@lucide/vue`. Create that directory when the
 project needs its own images or fonts, and document it here at the same time.
 
@@ -108,9 +109,9 @@ business rules belong in services, and persistence details belong in repositorie
 
 ## Testing
 
-- Unit and integration tests live in `tests/unit/**/*.spec.ts` (**100 tests across 13 files**)
+- Unit and integration tests live in `tests/unit/**/*.spec.ts` (**320 tests across 34 files**)
   and run on Vitest with jsdom and `fake-indexeddb` (see `tests/unit/setup.ts`).
-- End-to-end tests live in `tests/e2e/**/*.spec.ts` (**33 tests across 8 files**) and run on
+- End-to-end tests live in `tests/e2e/**/*.spec.ts` (**79 tests across 18 files**) and run on
   Playwright with Chromium. Install the browser once with
   `npx playwright install chromium`.
 - Service tests can be built on the in-memory repositories:

@@ -16,7 +16,6 @@
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
   --color-ring: var(--ring);
-  --color-graph-dot: var(--graph-dot);
 }
 
 html,

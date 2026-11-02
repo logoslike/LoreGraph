@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import {
-  NODE_COLLAPSE_DEFAULTS,
   nodeCollapseKey,
   sanitizeNodeCollapse,
   useNodeCollapse,
@@ -30,7 +29,6 @@ beforeEach(() => {
 describe('节点折叠偏好默认值与持久化', () => {
   it('默认没有折叠节点，也不写入存储', () => {
     const collapse = useNodeCollapse(UNIVERSE)
-    expect(NODE_COLLAPSE_DEFAULTS.collapsedIds).toEqual([])
     expect(collapse.collapsedIds.value).toEqual([])
     expect(collapse.isCollapsed('a')).toBe(false)
     expect(localStorage.getItem(nodeCollapseKey(UNIVERSE))).toBeNull()

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for helping shape LoreGraph. Please keep in mind that the project is a
-        **local-first, no-account, no-backend** tool for v0.1, and large features
+        **local-first, no-account, no-backend** tool for the current release, and large features
         (timeline, map, image attachments, AI, cloud sync, collaboration, plugins) are
         intentionally out of scope for this release.
 
