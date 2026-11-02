@@ -5,7 +5,13 @@ import { makeNode } from './fixtures'
 
 function nodes(...names: string[]): LoreNode[] {
   return names.map((name, index) =>
-    makeNode({ id: `node-${index + 1}`, name, type: index % 2 === 0 ? 'character' : 'location' }),
+    makeNode({
+      id: `node-${index + 1}`,
+      name,
+      // 名称匹配用例不引入描述干扰；描述匹配由下面的专门用例覆盖
+      description: '',
+      type: index % 2 === 0 ? 'character' : 'location',
+    }),
   )
 }
 
@@ -21,6 +27,26 @@ describe('searchNodes 节点搜索', () => {
     expect(searchNodes(list, '潮汐').map((node) => node.name)).toEqual(['潮汐教团'])
     expect(searchNodes(list, '舟').map((node) => node.name)).toEqual(['澜舟'])
     expect(searchNodes(list, '不存在')).toEqual([])
+  })
+
+  it('名称未命中时继续匹配描述关键词', () => {
+    const list = [
+      makeNode({ id: 'n1', name: '澜舟', description: '潮汐教团的引路人。' }),
+      makeNode({ id: 'n2', name: '墨鸦', description: '沉钟湾的守望者。' }),
+      makeNode({ id: 'n3', name: '沉钟湾', description: '' }),
+    ]
+
+    expect(searchNodes(list, '潮汐').map((node) => node.name)).toEqual(['澜舟'])
+    expect(searchNodes(list, '守望').map((node) => node.name)).toEqual(['墨鸦'])
+    // 名称与描述都命中时只返回一次，且保持原有顺序
+    expect(searchNodes(list, '沉钟').map((node) => node.name)).toEqual(['墨鸦', '沉钟湾'])
+    expect(searchNodes(list, '潮汐教团').map((node) => node.name)).toEqual(['澜舟'])
+  })
+
+  it('描述匹配同样不区分大小写', () => {
+    const list = [makeNode({ id: 'n1', name: 'Ember', description: 'Keeper of the Tide' })]
+    expect(searchNodes(list, 'keeper').map((node) => node.name)).toEqual(['Ember'])
+    expect(searchNodes(list, 'TIDE').map((node) => node.name)).toEqual(['Ember'])
   })
 
   it('查询词前后空白会被 trim', () => {

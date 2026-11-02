@@ -9,6 +9,7 @@ import {
   Maximize,
   Network,
   Plus,
+  Search,
   Shapes,
   Trash,
   Undo2,
@@ -33,8 +34,20 @@ withDefaults(
     layouting?: boolean
     /** 是否存在可恢复的布局快照。 */
     canRestoreLayout?: boolean
+    /** 画布右上角的节点查找面板是否打开。 */
+    searchOpen?: boolean
+    /** 当前搜索词非空：查找按钮保持高亮，提示搜索仍在生效。 */
+    searchActive?: boolean
   }>(),
-  { canDelete: false, canFocus: false, focused: false, layouting: false, canRestoreLayout: false },
+  {
+    canDelete: false,
+    canFocus: false,
+    focused: false,
+    layouting: false,
+    canRestoreLayout: false,
+    searchOpen: false,
+    searchActive: false,
+  },
 )
 
 const emit = defineEmits<{
@@ -43,6 +56,7 @@ const emit = defineEmits<{
   (event: 'fit-view'): void
   (event: 'zoom-in'): void
   (event: 'zoom-out'): void
+  (event: 'toggle-search'): void
   (event: 'delete-selected'): void
   (event: 'toggle-focus'): void
   (event: 'auto-layout', mode: LayoutMode): void
@@ -172,6 +186,17 @@ function onExportGraph(): void {
       @click="emit('zoom-out')"
     >
       <ZoomOut :size="16" />
+    </BaseButton>
+    <BaseButton
+      variant="ghost"
+      size="sm"
+      data-testid="graph-search-btn"
+      aria-label="查找节点"
+      title="查找节点"
+      :aria-expanded="searchOpen"
+      @click="emit('toggle-search')"
+    >
+      <Search :size="16" :class="searchActive ? 'text-accent' : ''" />
     </BaseButton>
 
     <span class="my-0.5 h-px w-6 bg-border" aria-hidden="true" />

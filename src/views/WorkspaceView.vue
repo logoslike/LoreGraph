@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import Inspector from '@/components/layout/Inspector.vue'
@@ -74,24 +74,11 @@ function openCreateNode(): void {
 }
 
 /**
- * 侧栏点击节点：先退出聚焦模式（聚焦只保留中心节点的邻域，目标可能不在画布上，
- * 画布也就找不到它），再清除会隐藏目标节点的类型筛选（筛选是包含式的，非空且不含
- * 目标类型就会把节点藏起来），最后选中，并由画布把该节点定位到视口中心。
- * 普通画布点击不走这里：聚焦中心不随选中自动变化。
+ * 侧栏点击节点：可见性处理统一交给画布（退出聚焦、解除冲突筛选、展开折叠祖先），
+ * 再选中并把节点定位到视口中心。普通画布点击不走这里：聚焦中心不随选中自动变化。
  */
 function selectNodeFromSidebar(id: string): void {
-  if (ui.focusNodeId !== null) {
-    ui.exitFocus()
-  }
-  const node = graph.nodeById(id)
-  if (node && ui.activeTypeKeys.length > 0 && !ui.activeTypeKeys.includes(node.type)) {
-    ui.clearTypeFilters()
-  }
-  graph.selectNode(id)
-  // 等聚焦退出、筛选与选中状态落到画布（Vue Flow 收到节点）后再定位，否则 fitNode 找不到目标
-  void nextTick(() => {
-    void graphCanvasRef.value?.focusNode(id)
-  })
+  void graphCanvasRef.value?.locateNode(id)
 }
 
 async function deleteSelection(): Promise<void> {

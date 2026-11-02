@@ -14,6 +14,14 @@ export interface LoreNodeData {
   isMatch: boolean
   /** 是否因相邻高亮而变淡（有选中且不在 1 跳邻域内）。 */
   isDimmed: boolean
+  /** 是否已收起它沿出边可达的下级节点。 */
+  isCollapsed: boolean
+  /** 被这个节点收起的下级节点数量，用于折叠态徽标。 */
+  hiddenCount: number
+  /** 是否存在沿出边可达的下级节点；为 false 时不渲染折叠按钮。 */
+  hasChildren: boolean
+  /** 切换折叠状态；具体状态与持久化由 GraphCanvas 负责。 */
+  onToggleCollapse?: () => void
 }
 
 /** 传给自定义关系组件的业务数据。 */

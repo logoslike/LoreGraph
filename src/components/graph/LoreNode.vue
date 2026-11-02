@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position, type NodeProps } from '@vue-flow/core'
+import { ChevronDown, ChevronRight } from '@lucide/vue'
 import { getIconComponent } from '@/models/icons'
 import type { LoreNodeData } from './types'
 
@@ -8,6 +9,20 @@ const props = defineProps<NodeProps<LoreNodeData>>()
 
 const icon = computed(() => getIconComponent(props.data.iconName))
 const color = computed(() => props.data.color || '#6366f1')
+
+/** 折叠按钮的读屏名称：同时说明动作与节点名。 */
+const collapseLabel = computed(
+  () => `${props.data.isCollapsed ? '展开' : '收起'}「${props.data.name}」的下级节点`,
+)
+
+/** 展开时提示「收起」，收起时把隐藏数量写进 title，便于悬停确认。 */
+const collapseTitle = computed(() =>
+  props.data.isCollapsed ? `展开下级节点（当前收起 ${props.data.hiddenCount} 个）` : '收起下级节点',
+)
+
+function toggleCollapse(): void {
+  props.data.onToggleCollapse?.()
+}
 </script>
 
 <template>
@@ -17,10 +32,13 @@ const color = computed(() => props.data.color || '#6366f1')
     :data-node-id="id"
     :data-selected="data.isSelected ? 'true' : 'false'"
     :data-dimmed="data.isDimmed ? 'true' : 'false'"
+    :data-collapsed="data.isCollapsed ? 'true' : 'false'"
     :class="{
       'is-selected': data.isSelected,
       'is-match': data.isMatch,
       'is-dimmed': data.isDimmed,
+      'is-collapsed': data.isCollapsed,
+      'has-toggle': data.hasChildren,
     }"
     :style="{ '--lore-color': color }"
   >
@@ -36,6 +54,26 @@ const color = computed(() => props.data.color || '#6366f1')
       <span class="lore-node__name" :title="data.name">{{ data.name }}</span>
       <span class="lore-node__type">{{ data.typeLabel }}</span>
     </span>
+
+    <!-- 折叠/展开只对有出边的节点出现；nodrag 防止点击时拖动画布节点 -->
+    <button
+      v-if="data.hasChildren"
+      type="button"
+      class="lore-node__collapse nodrag nopan"
+      data-testid="node-collapse-toggle"
+      :data-node-id="id"
+      :aria-expanded="!data.isCollapsed"
+      :aria-label="collapseLabel"
+      :title="collapseTitle"
+      @click.stop="toggleCollapse"
+      @pointerdown.stop
+    >
+      <ChevronDown v-if="!data.isCollapsed" :size="13" />
+      <template v-else>
+        <ChevronRight :size="13" />
+        <span class="lore-node__hidden-count" aria-hidden="true">{{ data.hiddenCount }}</span>
+      </template>
+    </button>
   </div>
 </template>
 
@@ -55,7 +93,13 @@ const color = computed(() => props.data.color || '#6366f1')
   transition:
     box-shadow 0.15s ease,
     border-color 0.15s ease,
-    opacity 0.15s ease;
+    opacity 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* 有折叠按钮时给右上角留出点击区域，节点名的可用宽度相应收缩 */
+.lore-node.has-toggle {
+  padding-right: 38px;
 }
 
 .lore-node:hover {
@@ -68,6 +112,11 @@ const color = computed(() => props.data.color || '#6366f1')
   box-shadow:
     0 0 0 2px var(--ring),
     0 6px 18px rgb(0 0 0 / 0.14);
+}
+
+/* 收起态：轻微染色 + 隐藏数量徽标，保留节点本身仍可选中与拖动 */
+.lore-node.is-collapsed {
+  background: color-mix(in srgb, var(--lore-color) 6%, var(--bg));
 }
 
 /* 相邻高亮：与选中项无关的节点变淡，与搜索命中可叠加 */
@@ -127,6 +176,58 @@ const color = computed(() => props.data.color || '#6366f1')
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 折叠按钮默认淡出，悬停、选中、收起态与键盘聚焦时显示；无子节点时不渲染 */
+.lore-node__collapse {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 21px;
+  height: 20px;
+  padding: 0 3px;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.lore-node:hover .lore-node__collapse,
+.lore-node:focus-within .lore-node__collapse,
+.lore-node.is-selected .lore-node__collapse,
+.lore-node.is-collapsed .lore-node__collapse {
+  opacity: 1;
+}
+
+.lore-node__collapse:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* 触屏设备没有 hover：折叠按钮必须常显，否则无法发现/触达 */
+@media (hover: none) {
+  .lore-node__collapse {
+    opacity: 1;
+  }
+}
+
+.lore-node__collapse:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+  opacity: 1;
+}
+
+.lore-node__hidden-count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .lore-node :deep(.vue-flow__handle) {

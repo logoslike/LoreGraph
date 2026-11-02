@@ -329,8 +329,8 @@ function clearSearch(): void {
           data-search-input
           data-testid="search-input"
           type="search"
-          placeholder="搜索节点名称…"
-          aria-label="搜索节点名称"
+          placeholder="搜索节点名称或描述…"
+          aria-label="搜索节点名称或描述"
           class="w-full rounded-md border border-border bg-bg py-1.5 pr-8 pl-8 text-sm text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           @input="onSearchInput"
         />

@@ -26,9 +26,13 @@ import RelationDialog from './RelationDialog.vue'
 import TypeManagerDialog from './TypeManagerDialog.vue'
 import { assignEdgeLanes, orderEdgesForVisualPriority } from './edge-lanes'
 import type { LoreEdgeData, LoreNodeData } from './types'
+import GraphSearchPanel from './GraphSearchPanel.vue'
 import { useGraphViewport } from '@/composables/useGraphViewport'
+import { useNodeCollapse } from '@/composables/useNodeCollapse'
+import { computeCollapseVisibility } from '@/services/collapse'
 import type { LayoutMode } from '@/services/layout.service'
 import { neighborhoodOf } from '@/services/neighborhood'
+import { matchesNodeQuery } from '@/services/search'
 import type { LoreEdge } from '@/models/edge'
 import type { LoreNode as LoreNodeModel } from '@/models/node'
 import { useGraphStore } from '@/stores/graph'
@@ -63,6 +67,7 @@ let pendingFitStop: (() => void) | null = null
 const createOpen = ref(false)
 const relationOpen = ref(false)
 const typeManagerOpen = ref(false)
+const searchOpen = ref(false)
 /** 待确认的连线：由 @connect 记录，确认后写入 store。 */
 const pendingConnection = ref<{ source: string; target: string } | null>(null)
 
@@ -74,20 +79,22 @@ const edgeTypes = { loreEdge: markRaw(LoreEdgeView) }
 const filterActive = computed(() => ui.activeTypeKeys.length > 0)
 const searchQuery = computed(() => ui.searchQuery.trim().toLowerCase())
 
+/** 节点折叠是视图状态：按当前世界持久化，不写节点模型、不进入导出文件。 */
+const collapse = useNodeCollapse(() => graph.universeId ?? '')
+const collapseVisibility = computed(() =>
+  computeCollapseVisibility(collapse.collapsedIds.value, graph.edges),
+)
+/** 有出边的节点才显示折叠按钮，与「子节点」定义一致。 */
+const parentNodeIds = computed(() => new Set(graph.edges.map((edge) => edge.source)))
+
 /** 类型筛选：为空显示全部，否则只显示命中类型的节点。 */
 function isVisible(node: LoreNodeModel): boolean {
   return !filterActive.value || ui.activeTypeKeys.includes(node.type)
 }
 
-/** 搜索命中：名称或描述包含搜索词（大小写不敏感）。 */
+/** 搜索命中：名称或描述包含搜索词（与侧栏、画布查找共用同一规则）。 */
 function isMatch(node: LoreNodeModel): boolean {
-  if (searchQuery.value === '') {
-    return false
-  }
-  return (
-    node.name.toLowerCase().includes(searchQuery.value) ||
-    node.description.toLowerCase().includes(searchQuery.value)
-  )
+  return matchesNodeQuery(node, ui.searchQuery)
 }
 
 /** 聚焦模式保留的节点 id；未聚焦时为 null。类型筛选与它在 visibleNodes 里取交集。 */
@@ -108,7 +115,10 @@ const focusCenter = computed(() =>
 
 const visibleNodes = computed(() =>
   graph.nodes.filter(
-    (node) => isVisible(node) && (focusNodeIds.value === null || focusNodeIds.value.has(node.id)),
+    (node) =>
+      isVisible(node) &&
+      !collapseVisibility.value.hiddenNodeIds.has(node.id) &&
+      (focusNodeIds.value === null || focusNodeIds.value.has(node.id)),
   ),
 )
 const visibleNodeIds = computed(() => new Set(visibleNodes.value.map((node) => node.id)))
@@ -147,6 +157,10 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
         isSelected: graph.selectedNodeId === node.id,
         isMatch: isMatch(node),
         isDimmed: neighborhood.value !== null && !neighborhood.value.nodeIds.has(node.id),
+        isCollapsed: parentNodeIds.value.has(node.id) && collapse.isCollapsed(node.id),
+        hiddenCount: collapseVisibility.value.hiddenCounts.get(node.id) ?? 0,
+        hasChildren: parentNodeIds.value.has(node.id),
+        onToggleCollapse: () => toggleNodeCollapse(node.id),
       },
     }
   }),
@@ -336,6 +350,79 @@ async function focusNode(nodeId: string): Promise<boolean> {
   return await viewport.fitNode(nodeId)
 }
 
+/**
+ * 收起/展开一个节点。折叠会隐藏它的后代与相关边；
+ * 如果当前选中项或聚焦中心被藏起来，同时清除，避免 Inspector 指向画布上不存在的元素。
+ */
+function toggleNodeCollapse(nodeId: string): void {
+  collapse.toggle(nodeId)
+  const hidden = computeCollapseVisibility(collapse.collapsedIds.value, graph.edges).hiddenNodeIds
+  if (graph.selectedNodeId !== null && hidden.has(graph.selectedNodeId)) {
+    graph.selectNode(null)
+  }
+  const selectedEdge = graph.selectedEdge
+  if (selectedEdge && (hidden.has(selectedEdge.source) || hidden.has(selectedEdge.target))) {
+    graph.selectEdge(null)
+  }
+  if (ui.focusNodeId !== null && hidden.has(ui.focusNodeId)) {
+    ui.exitFocus()
+  }
+}
+
+/**
+ * 把目标节点带回可见状态：退出聚焦、解除冲突的类型筛选、展开藏起它的折叠祖先。
+ * 侧栏、查找结果和快捷键共用这一套规则，避免入口之间行为不一致。
+ */
+function prepareNodeNavigation(nodeId: string): boolean {
+  const node = graph.nodeById(nodeId)
+  if (!node) {
+    return false
+  }
+  if (ui.focusNodeId !== null) {
+    ui.exitFocus()
+  }
+  if (ui.activeTypeKeys.length > 0 && !ui.activeTypeKeys.includes(node.type)) {
+    ui.clearTypeFilters()
+  }
+  collapse.revealNode(nodeId, graph.edges)
+  graph.selectNode(nodeId)
+  return true
+}
+
+/** 选中节点并把视口中心移到它身上；目标被隐藏时先恢复可见。 */
+async function locateNode(nodeId: string): Promise<boolean> {
+  if (!prepareNodeNavigation(nodeId)) {
+    return false
+  }
+  await nextTick()
+  return await focusNode(nodeId)
+}
+
+/** 选中节点并进入 Focus Mode；可见性处理与 locateNode 相同。 */
+async function focusNodeInMode(nodeId: string): Promise<void> {
+  if (!prepareNodeNavigation(nodeId)) {
+    return
+  }
+  await nextTick()
+  ui.enterFocus(nodeId)
+}
+
+function toggleSearch(): void {
+  searchOpen.value = !searchOpen.value
+}
+
+function closeSearch(): void {
+  searchOpen.value = false
+}
+
+function onSearchLocate(nodeId: string): void {
+  void locateNode(nodeId)
+}
+
+function onSearchFocus(nodeId: string): void {
+  void focusNodeInMode(nodeId)
+}
+
 async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
   // 拖拽结束才回写 store，拖动过程不产生保存
   const position = {
@@ -485,6 +572,7 @@ watch(
 defineExpose({
   fitView,
   focusNode,
+  locateNode,
   openCreateDialog,
   openTypeManager: () => (typeManagerOpen.value = true),
   toggleFocus,
@@ -527,7 +615,10 @@ defineExpose({
           :focused="ui.focusNodeId !== null"
           :layouting="graph.isLayouting"
           :can-restore-layout="graph.canRestoreLayout"
+          :search-open="searchOpen"
+          :search-active="searchQuery !== ''"
           @create-node="openCreateDialog"
+          @toggle-search="toggleSearch"
           @toggle-focus="toggleFocus"
           @manage-types="typeManagerOpen = true"
           @fit-view="fitView"
@@ -558,6 +649,14 @@ defineExpose({
         </div>
       </Panel>
     </VueFlow>
+
+    <!-- 节点查找：与侧栏搜索共用 query，非模态，不铺遮罩 -->
+    <GraphSearchPanel
+      v-if="searchOpen"
+      @close="closeSearch"
+      @locate="onSearchLocate"
+      @focus="onSearchFocus"
+    />
 
     <!-- 空状态：还没有任何节点 -->
     <div v-if="graph.nodes.length === 0" class="graph-canvas__overlay" data-testid="graph-empty">
