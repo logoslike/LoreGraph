@@ -41,7 +41,7 @@ body:
     attributes:
       label: LoreGraph version or commit
       description: The version shown in package.json, or the commit SHA you are running.
-      placeholder: '0.1.0 or a1b2c3d'
+      placeholder: '0.3.0 or a1b2c3d'
     validations:
       required: true
 
