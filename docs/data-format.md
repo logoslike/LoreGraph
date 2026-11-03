@@ -25,6 +25,11 @@ v0.1 world files declared `format: "loregraph"`. v0.2 does not accept that value
 compatibility path, and such a file fails with `不支持的文件格式：loregraph`. Only the two values
 in the table above are valid.
 
+v0.3 does not change the format: `formatVersion` stays `1`, both file kinds and every field are
+unchanged from v0.2, and files exported by v0.2 import unchanged. The v0.3 workspace features
+(node folding, sidebar grouping, relation lanes, arrow visibility) are view state stored in
+`localStorage`, never in an export.
+
 ## Top-level structure
 
 | Field           | Type    | Required         | Description                                    |
@@ -395,7 +400,7 @@ type was added, removed, or edited, or the world was deleted — the commit abor
 
 - The file format is versioned independently from the IndexedDB schema. `format` and
   `formatVersion` are checked before schema validation: a document with an unknown format or a
-  version other than `1` produces a readable error instead of a Zod literal message. v0.2 accepts
+  version other than `1` produces a readable error instead of a Zod literal message. v0.3 accepts
   exactly version `1`; there is no upcast chain yet.
 - Exports always write the current `formatVersion` and are ordered deterministically by
   `createdAt` (ascending) for each collection.

@@ -171,7 +171,7 @@ src/
 ├─ repositories/    Persistence interfaces + memory and Dexie adapters
 ├─ services/        Business rules, import/export, layout, autosave
 ├─ stores/          Pinia stores (universe, types, graph, ui)
-├─ composables/     Theme, toast, shortcut and viewport helpers
+├─ composables/     Theme, toast, shortcuts, viewport, folding, sidebar preferences
 ├─ components/      Vue components: common/, layout/, editor/, universe/, graph/
 ├─ views/           Route-level views
 ├─ router/          Routes: / (worlds), /u/:universeId (workspace)
@@ -180,7 +180,7 @@ src/
 
 Read [docs/architecture.md](docs/architecture.md) for the full design: autosave and undo
 semantics, the import pipeline, automatic layout, universe isolation, cascade deletion, and the
-cross-tab limitations of v0.2.
+cross-tab limitations of v0.3.
 
 ## Data and privacy
 
@@ -197,8 +197,12 @@ cross-tab limitations of v0.2.
 
 ## Roadmap
 
-**v0.2 (current)** — world descriptions, two-step JSON import with merge and graph snippets,
-automatic layout, and a viewport that survives panel and window resizes.
+**v0.3 (current)** — workspace refinement: a context header, a sidebar node library grouped by
+type with per-world collapse, node folding, separate lanes for parallel relations, clustered
+layout by type, and a global direction-arrow switch.
+
+**v0.2** — world descriptions, two-step JSON import with merge and graph snippets, automatic
+layout, and a viewport that survives panel and window resizes.
 
 **v0.1** — graph canvas, search and filters, inspector with custom properties, universe
 management, a built-in sample world, JSON import/export, light/dark themes, autosave, and

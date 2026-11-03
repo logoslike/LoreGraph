@@ -212,7 +212,9 @@ debounced, because they cannot be merged into a partial patch.
 
 ### Undo
 
-v0.1 introduced a deliberately small undo surface; v0.2 adds layout restore.
+v0.1 introduced a deliberately small undo surface; v0.2 added layout restore; v0.3 adds no
+new undoable action — node folding, sidebar collapse, the arrow switch, and the folded-node badge
+are view state, so they are deliberately outside the undo model.
 
 - **Deleting a node** is atomic in the service: incident edges and the node are removed in one
   transaction, and the service returns a `DeleteNodeSnapshot` with the node and its edges. The
@@ -377,7 +379,7 @@ executes them without rollback, which is acceptable for tests.
 
 ## Cross-tab limitations
 
-v0.2 does **not** synchronise state between browser tabs:
+v0.3 does **not** synchronise state between browser tabs:
 
 - There is no `BroadcastChannel`, `SharedWorker`, or storage-event listener. Each tab holds its
   own Pinia state for the same world.
