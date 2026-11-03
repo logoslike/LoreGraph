@@ -11,6 +11,7 @@ import { useTheme } from '@/composables/useTheme'
 import { useToast } from '@/composables/useToast'
 import type { Universe } from '@/models/universe'
 import { services } from '@/services'
+import { loadBundledWorlds } from '@/services/bundled-worlds'
 import type { ImportPreview } from '@/services/types'
 import { useUniverseStore } from '@/stores/universe'
 
@@ -96,6 +97,31 @@ async function loadUniverses(): Promise<void> {
     await refreshStats()
   } catch (error) {
     toast.danger(`世界列表加载失败：${formatError(error)}`)
+  }
+}
+
+/** 首页启动时导入项目根目录 worlds/*.json；失败文件会被跳过，不阻塞其余文件。 */
+async function importBundledWorlds(): Promise<void> {
+  try {
+    const result = await loadBundledWorlds(services)
+    for (const failure of result.failures) {
+      console.warn(`[bundled-world] 跳过 ${failure.path}：${failure.message}`)
+    }
+    for (const warning of result.warnings) {
+      console.warn(`[bundled-world] ${warning}`)
+    }
+    if (result.imported.length === 0 && result.failures.length === 0) {
+      return
+    }
+    await loadUniverses()
+    if (result.imported.length > 0) {
+      toast.info(`已自动导入 ${result.imported.length} 个根目录世界文件`)
+    }
+    if (result.failures.length > 0) {
+      toast.danger(`已跳过 ${result.failures.length} 个无法导入的根目录世界文件`)
+    }
+  } catch (error) {
+    toast.danger(`根目录 worlds 自动导入失败：${formatError(error)}`)
   }
 }
 
@@ -239,6 +265,7 @@ async function onImported(): Promise<void> {
 
 onMounted(async () => {
   await loadUniverses()
+  await importBundledWorlds()
   await seedFirstRun()
   bootstrapping.value = false
 })

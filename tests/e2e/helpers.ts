@@ -4,6 +4,8 @@ import { expect, type Download, type Page } from '@playwright/test'
 
 /** 首启标记：存在时跳过自动载入示例世界，获得完全空的世界列表。 */
 const FIRST_RUN_KEY = 'loregraph.firstRunSeeded'
+/** 关闭根目录 worlds 自动导入，避免工作区未跟踪 JSON 改变旧用例的固定计数。 */
+const BUNDLED_WORLDS_DISABLED_KEY = 'loregraph.bundledWorlds.disabled'
 const DB_NAME = 'loregraph'
 
 export interface StoredNode {
@@ -14,8 +16,16 @@ export interface StoredNode {
   position: { x: number; y: number }
 }
 
+/** 保留首启示例世界，但关闭根目录 worlds 自动导入；用于依赖示例世界精确计数的用例。 */
+export async function useSampleLibrary(page: Page): Promise<void> {
+  await page.addInitScript((key: string) => {
+    window.localStorage.setItem(key, '1')
+  }, BUNDLED_WORLDS_DISABLED_KEY)
+}
+
 /** 在导航前声明「已首启」，避免每个用例都自动载入示例世界。 */
 export async function useEmptyLibrary(page: Page): Promise<void> {
+  await useSampleLibrary(page)
   await page.addInitScript((key: string) => {
     window.localStorage.setItem(key, '1')
   }, FIRST_RUN_KEY)
@@ -23,6 +33,8 @@ export async function useEmptyLibrary(page: Page): Promise<void> {
 
 /** 打开世界列表页，并等待首屏（列表或空状态）出现。 */
 export async function gotoUniverses(page: Page): Promise<void> {
+  // 旧 E2E 的计数与示例世界有关，默认不加载工作区根目录 worlds 下的未跟踪文件。
+  await useSampleLibrary(page)
   await page.goto('/')
   await expect(
     page.getByTestId('universe-list').or(page.getByTestId('new-universe-empty-btn')),

@@ -5,6 +5,7 @@ import {
   gotoUniverses,
   openUniverse,
   useEmptyLibrary,
+  useSampleLibrary,
 } from './helpers'
 
 /** LG-001 世界 CRUD：创建、编辑、删除。 */
@@ -94,7 +95,8 @@ test.describe('LG-001 世界 CRUD', () => {
 /** LG-002 世界隔离与切换：不同世界数据互不影响，可用切换器切换。 */
 test.describe('LG-002 世界隔离与切换', () => {
   test('世界数据互相隔离，并可用世界切换器切换', async ({ page }) => {
-    // 本用例需要示例世界存在，不跳过首启种子
+    // 本用例需要示例世界存在，不跳过首启种子，但关闭根目录 worlds 自动导入
+    await useSampleLibrary(page)
     await page.goto('/')
     await expect(page.getByTestId('universe-card').first()).toBeVisible()
 

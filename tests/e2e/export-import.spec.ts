@@ -10,6 +10,7 @@ import {
   openGraphMoreMenu,
   openUniverse,
   readDownloadJson,
+  useSampleLibrary,
 } from './helpers'
 
 const SAMPLE_PATH = resolve(process.cwd(), 'public/examples/emberfall.json')
@@ -99,6 +100,7 @@ test.describe('LG-012 导入', () => {
     await mkdir(dirname(broken), { recursive: true })
     await writeFile(broken, JSON.stringify(sample), 'utf8')
 
+    await useSampleLibrary(page)
     await page.goto('/')
     await expect(page.getByTestId('universe-card')).toHaveCount(1)
 
@@ -121,6 +123,7 @@ test.describe('LG-012 导入', () => {
     await mkdir(dirname(broken), { recursive: true })
     await writeFile(broken, '{ not valid json', 'utf8')
 
+    await useSampleLibrary(page)
     await page.goto('/')
     await expect(page.getByTestId('universe-card')).toHaveCount(1)
 
@@ -134,6 +137,7 @@ test.describe('LG-012 导入', () => {
   })
 
   test('世界导出后删除，再导入为新世界可恢复节点、关系与描述', async ({ page }, testInfo) => {
+    await useSampleLibrary(page)
     await page.goto('/')
     await expect(page.getByTestId('universe-card')).toHaveCount(1)
 
