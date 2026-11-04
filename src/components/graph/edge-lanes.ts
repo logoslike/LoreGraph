@@ -243,15 +243,42 @@ function tangentReach(from: Point, to: Point, tangent: Point, max: number): numb
   return Math.min(max, projection / 2, distance(from, to) / 2)
 }
 
+interface Cubic {
+  from: Point
+  c1: Point
+  c2: Point
+  to: Point
+}
+
+/**
+ * 几何函数的中间结果：段列表 + 起点 + 标签锚点。
+ * path 字符串只对最终选中的候选生成一次；避障采样与候选长度直接复用段列表，
+ * 不再像旧实现那样把 path 字符串解析回贝塞尔段。
+ */
+interface GeometryShape {
+  start: Point
+  segments: Cubic[]
+  labelX: number
+  labelY: number
+}
+
+/** 由段列表拼出 path；输出与旧实现逐字节一致（M + 若干 C，坐标保留两位小数）。 */
+function cubicPath(segments: readonly Cubic[], start: Point): string {
+  let path = `M ${format(start.x)} ${format(start.y)}`
+  for (const segment of segments) {
+    path += ` C ${format(segment.c1.x)} ${format(segment.c1.y)}`
+    path += ` ${format(segment.c2.x)} ${format(segment.c2.y)}`
+    path += ` ${format(segment.to.x)} ${format(segment.to.y)}`
+  }
+  return path
+}
+
 /**
  * 用三次贝塞尔段串起路点，每段端点切线由路点给出，因此整条路径 G1 连续：
  * 不会有直角折点，也不会有方向突变。相邻路点重合时跳过该段。
  */
-function splinePath(waypoints: readonly Waypoint[], maxTangent = MAX_TANGENT): string {
-  if (waypoints.length === 0) {
-    return ''
-  }
-  let path = `M ${format(waypoints[0].point.x)} ${format(waypoints[0].point.y)}`
+function splineSegments(waypoints: readonly Waypoint[], maxTangent = MAX_TANGENT): Cubic[] {
+  const segments: Cubic[] = []
   for (let index = 0; index + 1 < waypoints.length; index += 1) {
     const from = waypoints[index]
     const to = waypoints[index + 1]
@@ -260,52 +287,38 @@ function splinePath(waypoints: readonly Waypoint[], maxTangent = MAX_TANGENT): s
     }
     const firstReach = from.reach ?? tangentReach(from.point, to.point, from.tangent, maxTangent)
     const secondReach = to.reach ?? tangentReach(to.point, from.point, to.tangent, maxTangent)
-    const firstControl = add(from.point, from.tangent, firstReach)
-    const secondControl = add(to.point, to.tangent, -secondReach)
-    path += ` C ${format(firstControl.x)} ${format(firstControl.y)}`
-    path += ` ${format(secondControl.x)} ${format(secondControl.y)}`
-    path += ` ${format(to.point.x)} ${format(to.point.y)}`
-  }
-  return path
-}
-
-interface Cubic {
-  from: Point
-  c1: Point
-  c2: Point
-  to: Point
-}
-
-/** 把几何函数自己的 M/C 路径解析成三次贝塞尔段（只用于避障采样）。 */
-function cubicsOf(path: string): Cubic[] {
-  const tokens = path.match(/[MC]|-?\d*\.?\d+/g) ?? []
-  const cubics: Cubic[] = []
-  let index = 0
-  let command = ''
-  let current: Point = { x: 0, y: 0 }
-  while (index < tokens.length) {
-    const token = tokens[index]
-    if (token === 'M' || token === 'C') {
-      command = token
-      index += 1
-      continue
-    }
-    const size = command === 'C' ? 6 : 2
-    const numbers = tokens.slice(index, index + size).map(Number)
-    index += size
-    if (command === 'M') {
-      current = { x: numbers[0], y: numbers[1] }
-      continue
-    }
-    cubics.push({
-      from: current,
-      c1: { x: numbers[0], y: numbers[1] },
-      c2: { x: numbers[2], y: numbers[3] },
-      to: { x: numbers[4], y: numbers[5] },
+    segments.push({
+      from: from.point,
+      c1: add(from.point, from.tangent, firstReach),
+      c2: add(to.point, to.tangent, -secondReach),
+      to: to.point,
     })
-    current = { x: numbers[4], y: numbers[5] }
   }
-  return cubics
+  return segments
+}
+
+/** 由路点生成几何中间结果（标签锚点由调用方给出）。 */
+function shapeOf(
+  waypoints: readonly Waypoint[],
+  labelX: number,
+  labelY: number,
+  maxTangent = MAX_TANGENT,
+): GeometryShape {
+  return {
+    start: waypoints[0].point,
+    segments: splineSegments(waypoints, maxTangent),
+    labelX,
+    labelY,
+  }
+}
+
+/** 只有最终几何才拼 path 字符串。 */
+function toGeometry(shape: GeometryShape): LanedEdgeGeometry {
+  return {
+    path: cubicPath(shape.segments, shape.start),
+    labelX: shape.labelX,
+    labelY: shape.labelY,
+  }
 }
 
 function pointOnCubic(cubic: Cubic, t: number): Point {
@@ -325,9 +338,9 @@ function pointOnCubic(cubic: Cubic, t: number): Point {
 }
 
 /** 折线近似的路径长度，用于在同样不穿节点的候选里选较短的一条。 */
-function pathLength(path: string): number {
+function pathLength(segments: readonly Cubic[]): number {
   let total = 0
-  for (const cubic of cubicsOf(path)) {
+  for (const cubic of segments) {
     let previous = cubic.from
     for (let step = 1; step <= 12; step += 1) {
       const point = pointOnCubic(cubic, step / 12)
@@ -338,44 +351,78 @@ function pathLength(path: string): number {
   return total
 }
 
-/**
- * 普通关系的平滑 S 形：两端沿 handle 切线离开/进入。
- * flatMiddle 为真时在中点再插一个水平切线的路点，让曲线以较平的姿态穿过两列之间，
- * 这是避障候选：直连 S 会擦到中间列节点时改用它。
- */
-function sCurveGeometry(input: LanedEdgeInput, flatMiddle = false): LanedEdgeGeometry {
-  const source: Point = { x: input.sourceX, y: input.sourceY }
-  const target: Point = { x: input.targetX, y: input.targetY }
-  if (!flatMiddle || Math.abs(target.y - source.y) < 0.5) {
-    return {
-      path: splinePath([
-        { point: source, tangent: outward(input.sourcePosition) },
-        { point: target, tangent: inward(input.targetPosition) },
-      ]),
-      labelX: avoidZero((source.x + target.x) / 2),
-      labelY: avoidZero((source.y + target.y) / 2),
+/** 轴对齐包围盒。 */
+export interface Bounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+/** 段列表的控制点包围盒：贝塞尔曲线一定落在控制点凸包内，因此也在该盒内。 */
+function boundsOf(segments: readonly Cubic[]): Bounds {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const segment of segments) {
+    for (const point of [segment.from, segment.c1, segment.c2, segment.to]) {
+      minX = Math.min(minX, point.x)
+      minY = Math.min(minY, point.y)
+      maxX = Math.max(maxX, point.x)
+      maxY = Math.max(maxY, point.y)
     }
   }
-  const apex: Point = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 }
-  const horizontal = isHorizontal(input.sourcePosition) && isHorizontal(input.targetPosition)
-  const apexTangent = horizontal
-    ? { x: target.x >= source.x ? 1 : -1, y: 0 }
-    : { x: 0, y: target.y >= source.y ? 1 : -1 }
-  return {
-    path: splinePath([
-      { point: source, tangent: outward(input.sourcePosition) },
-      { point: apex, tangent: apexTangent },
-      { point: target, tangent: inward(input.targetPosition) },
-    ]),
-    labelX: avoidZero(apex.x),
-    labelY: avoidZero(apex.y),
+  return { minX, minY, maxX, maxY }
+}
+
+/**
+ * 只保留可能与曲线相交的障碍盒：控制点包围盒之外的节点不可能被命中。
+ * 这是纯剪枝，命中统计与逐一遍历全部障碍完全一致。
+ */
+function nearbyObstacles(segments: readonly Cubic[], obstacles: readonly Rect[]): readonly Rect[] {
+  if (segments.length === 0) {
+    return []
   }
+  const bounds = boundsOf(segments)
+  return obstacles.filter((rect) => rectTouchesBounds(rect, bounds))
+}
+
+/**
+ * 障碍盒是否可能被落在该包围盒内的曲线命中。
+ * 容差与 nearbyObstacles 完全一致：先按并集包围盒预筛不会改变命中统计。
+ */
+export function rectTouchesBounds(rect: Rect, bounds: Bounds): boolean {
+  return (
+    rect.x < bounds.maxX + 1 &&
+    rect.x + rect.width > bounds.minX - 1 &&
+    rect.y < bounds.maxY + 1 &&
+    rect.y + rect.height > bounds.minY - 1
+  )
+}
+
+/**
+ * 普通关系两个避障候选的包围盒并集。两个候选只由两端点与端口决定，
+ * 因此关系组件可以在不重算几何的前提下，用它把障碍盒预筛到「可能命中」的一小撮；
+ * 拖动期间移动的节点盒一旦进入/离开该走廊，预筛结果就会变化并触发重算。
+ * 返回 null 表示这条关系不使用障碍（此时任何障碍盒都不影响几何）。
+ */
+export function normalObstacleBounds(input: LanedEdgeInput): Bounds | null {
+  const candidates = normalCandidates(input)
+  if (candidates === null) {
+    return null
+  }
+  const [direct, flat] = candidates
+  return boundsOf([...direct.segments, ...flat.segments])
 }
 
 /** 采样路径并统计落入障碍盒内部的点数；用于在少量候选曲线里挑不穿节点的。 */
-function obstacleHits(path: string, obstacles: readonly Rect[]): number {
+function obstacleHits(segments: readonly Cubic[], obstacles: readonly Rect[]): number {
+  if (obstacles.length === 0) {
+    return 0
+  }
   let hits = 0
-  for (const segment of cubicsOf(path)) {
+  for (const segment of segments) {
     for (let step = 1; step < 24; step += 1) {
       const point = pointOnCubic(segment, step / 24)
       for (const rect of obstacles) {
@@ -394,21 +441,88 @@ function obstacleHits(path: string, obstacles: readonly Rect[]): number {
 }
 
 /**
+ * 普通关系的平滑 S 形：两端沿 handle 切线离开/进入。
+ * flatMiddle 为真时在中点再插一个水平切线的路点，让曲线以较平的姿态穿过两列之间，
+ * 这是避障候选：直连 S 会擦到中间列节点时改用它。
+ */
+function sCurveShape(input: LanedEdgeInput, flatMiddle = false): GeometryShape {
+  const source: Point = { x: input.sourceX, y: input.sourceY }
+  const target: Point = { x: input.targetX, y: input.targetY }
+  if (!flatMiddle || Math.abs(target.y - source.y) < 0.5) {
+    return shapeOf(
+      [
+        { point: source, tangent: outward(input.sourcePosition) },
+        { point: target, tangent: inward(input.targetPosition) },
+      ],
+      avoidZero((source.x + target.x) / 2),
+      avoidZero((source.y + target.y) / 2),
+    )
+  }
+  const apex: Point = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 }
+  const horizontal = isHorizontal(input.sourcePosition) && isHorizontal(input.targetPosition)
+  const apexTangent = horizontal
+    ? { x: target.x >= source.x ? 1 : -1, y: 0 }
+    : { x: 0, y: target.y >= source.y ? 1 : -1 }
+  return shapeOf(
+    [
+      { point: source, tangent: outward(input.sourcePosition) },
+      { point: apex, tangent: apexTangent },
+      { point: target, tangent: inward(input.targetPosition) },
+    ],
+    avoidZero(apex.x),
+    avoidZero(apex.y),
+  )
+}
+
+/**
+ * 普通关系的两个避障候选：直连平滑 S、以及中点带水平切线的 S。
+ * 返回 null 表示这条关系根本不走避障（自环、重叠、分道、反向、无横向间隙），
+ * 此时障碍盒对几何没有影响。几何与「候选包围盒预筛」共用这一处判定。
+ */
+function normalCandidates(input: LanedEdgeInput): [GeometryShape, GeometryShape] | null {
+  if (sameRect(input.sourceRect, input.targetRect)) {
+    return null
+  }
+  if (boxesOverlap(input.sourceRect, input.targetRect)) {
+    return null
+  }
+  if (isHorizontal(input.sourcePosition) && isHorizontal(input.targetPosition)) {
+    const facing =
+      (input.sourcePosition === Position.Right && input.targetPosition === Position.Left) ||
+      (input.sourcePosition === Position.Left && input.targetPosition === Position.Right)
+    if (!facing || input.lane !== 0) {
+      return null
+    }
+    const direction = outward(input.sourcePosition).x
+    if ((input.targetX - input.sourceX) * direction <= 0) {
+      return null
+    }
+  }
+  return [sCurveShape(input), sCurveShape(input, true)]
+}
+
+/**
  * 有界避障：普通关系只有两个候选——直连平滑 S、以及中点带水平切线的 S。
  * 取穿节点最少的一条；同样不穿时取更短的，避免为了绕行而绕远。
  * 不做全图搜索，也不引入每条关系的持久数据。
+ * 候选先用控制点包围盒预筛障碍：盒外的节点不可能被曲线命中。
  */
-function avoidObstacles(input: LanedEdgeInput, direct: LanedEdgeGeometry): LanedEdgeGeometry {
+function avoidObstacles(
+  input: LanedEdgeInput,
+  candidates: readonly [GeometryShape, GeometryShape],
+): GeometryShape {
   if (!input.obstacles || input.obstacles.length === 0) {
-    return direct
+    return candidates[0]
   }
-  const candidates = [direct, sCurveGeometry(input, true)]
   let best = candidates[0]
-  let bestHits = obstacleHits(best.path, input.obstacles)
-  let bestLength = pathLength(best.path)
+  let bestHits = obstacleHits(best.segments, nearbyObstacles(best.segments, input.obstacles))
+  let bestLength = pathLength(best.segments)
   for (const candidate of candidates.slice(1)) {
-    const hits = obstacleHits(candidate.path, input.obstacles)
-    const length = pathLength(candidate.path)
+    const hits = obstacleHits(
+      candidate.segments,
+      nearbyObstacles(candidate.segments, input.obstacles),
+    )
+    const length = pathLength(candidate.segments)
     if (hits < bestHits || (hits === bestHits && length < bestLength)) {
       best = candidate
       bestHits = hits
@@ -419,15 +533,18 @@ function avoidObstacles(input: LanedEdgeInput, direct: LanedEdgeGeometry): Laned
 }
 
 /** 同一行两节点之间的车道：以中点为拱顶的对称平滑拱，标签落在拱顶。 */
-function laneArcGeometry(input: LanedEdgeInput, laneY: number): LanedEdgeGeometry {
+function laneArcShape(input: LanedEdgeInput, laneY: number): GeometryShape {
   const apex: Point = { x: (input.sourceX + input.targetX) / 2, y: laneY }
   const forward = input.targetX >= input.sourceX ? 1 : -1
-  const path = splinePath([
-    { point: { x: input.sourceX, y: input.sourceY }, tangent: outward(input.sourcePosition) },
-    { point: apex, tangent: { x: forward, y: 0 } },
-    { point: { x: input.targetX, y: input.targetY }, tangent: inward(input.targetPosition) },
-  ])
-  return { path, labelX: avoidZero(apex.x), labelY: avoidZero(apex.y) }
+  return shapeOf(
+    [
+      { point: { x: input.sourceX, y: input.sourceY }, tangent: outward(input.sourcePosition) },
+      { point: apex, tangent: { x: forward, y: 0 } },
+      { point: { x: input.targetX, y: input.targetY }, tangent: inward(input.targetPosition) },
+    ],
+    avoidZero(apex.x),
+    avoidZero(apex.y),
+  )
 }
 
 /**
@@ -435,11 +552,7 @@ function laneArcGeometry(input: LanedEdgeInput, laneY: number): LanedEdgeGeometr
  * 竖直与水平段都在两节点并集之外，四角由三次贝塞尔四分之一转连接，
  * 因此既不会切进端点盒，也没有直角折点。lane 的上下与行距由调用方给定的 laneY 决定。
  */
-function stapleGeometry(
-  input: LanedEdgeInput,
-  laneY: number,
-  labelDelta: number,
-): LanedEdgeGeometry {
+function stapleShape(input: LanedEdgeInput, laneY: number, labelDelta: number): GeometryShape {
   const direction = outward(input.sourcePosition).x
   const inwardX = inward(input.targetPosition).x
   const step = laneY > input.sourceY ? 1 : -1
@@ -450,41 +563,40 @@ function stapleGeometry(
   const targetOuter = inwardX > 0 ? unionLeft : unionRight
   const laneDirection = targetOuter >= sourceOuter ? 1 : -1
   const radius = STAPLE_CORNER
-  const path = splinePath([
-    { point: { x: input.sourceX, y: input.sourceY }, tangent: { x: direction, y: 0 } },
-    {
-      point: { x: sourceOuter - direction * radius, y: input.sourceY },
-      tangent: { x: direction, y: 0 },
-    },
-    { point: { x: sourceOuter, y: input.sourceY + step * radius }, tangent: { x: 0, y: step } },
-    { point: { x: sourceOuter, y: laneY - step * radius }, tangent: { x: 0, y: step } },
-    {
-      point: { x: sourceOuter + laneDirection * radius, y: laneY },
-      tangent: { x: laneDirection, y: 0 },
-    },
-    {
-      point: { x: targetOuter - laneDirection * radius, y: laneY },
-      tangent: { x: laneDirection, y: 0 },
-    },
-    {
-      point: { x: targetOuter, y: laneY + verticalStep * radius },
-      tangent: { x: 0, y: verticalStep },
-    },
-    {
-      point: { x: targetOuter, y: input.targetY - verticalStep * radius },
-      tangent: { x: 0, y: verticalStep },
-    },
-    {
-      point: { x: targetOuter + inwardX * radius, y: input.targetY },
-      tangent: { x: inwardX, y: 0 },
-    },
-    { point: { x: input.targetX, y: input.targetY }, tangent: { x: inwardX, y: 0 } },
-  ])
-  return {
-    path,
-    labelX: avoidZero((sourceOuter + targetOuter) / 2),
-    labelY: avoidZero(laneY + labelDelta),
-  }
+  return shapeOf(
+    [
+      { point: { x: input.sourceX, y: input.sourceY }, tangent: { x: direction, y: 0 } },
+      {
+        point: { x: sourceOuter - direction * radius, y: input.sourceY },
+        tangent: { x: direction, y: 0 },
+      },
+      { point: { x: sourceOuter, y: input.sourceY + step * radius }, tangent: { x: 0, y: step } },
+      { point: { x: sourceOuter, y: laneY - step * radius }, tangent: { x: 0, y: step } },
+      {
+        point: { x: sourceOuter + laneDirection * radius, y: laneY },
+        tangent: { x: laneDirection, y: 0 },
+      },
+      {
+        point: { x: targetOuter - laneDirection * radius, y: laneY },
+        tangent: { x: laneDirection, y: 0 },
+      },
+      {
+        point: { x: targetOuter, y: laneY + verticalStep * radius },
+        tangent: { x: 0, y: verticalStep },
+      },
+      {
+        point: { x: targetOuter, y: input.targetY - verticalStep * radius },
+        tangent: { x: 0, y: verticalStep },
+      },
+      {
+        point: { x: targetOuter + inwardX * radius, y: input.targetY },
+        tangent: { x: inwardX, y: 0 },
+      },
+      { point: { x: input.targetX, y: input.targetY }, tangent: { x: inwardX, y: 0 } },
+    ],
+    avoidZero((sourceOuter + targetOuter) / 2),
+    avoidZero(laneY + labelDelta),
+  )
 }
 
 /**
@@ -492,7 +604,7 @@ function stapleGeometry(
  * 两端高度差较大时用外缘绕行，保证不切进端点盒。lane 的正负决定上下，
  * 绝对值决定行距。
  */
-function laneGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
+function laneShape(input: LanedEdgeInput): GeometryShape {
   const track = Math.max(1, Math.abs(input.lane))
   const above = input.lane <= 0
   const laneY = above
@@ -506,16 +618,16 @@ function laneGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
   // 只有“向前且同一行”的双向/平行关系用对称拱；其余用外缘绕行，
   // 否则从右侧反向回来时曲线会切进源节点上/下角。
   if (forward && Math.abs(input.targetY - input.sourceY) <= LANE_ARC_SPAN) {
-    return laneArcGeometry(input, laneY)
+    return laneArcShape(input, laneY)
   }
-  return stapleGeometry(input, laneY, 0)
+  return stapleShape(input, laneY, 0)
 }
 
 /**
  * 反向 / 重叠关系：沿两节点并集外侧绕到上方或下方，再回到目标连接点外侧。
  * 与分道共用同一套外缘绕行曲线，全程没有直角；lane 的正负与绝对值沿用分道的上下与行距。
  */
-function loopGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
+function loopShape(input: LanedEdgeInput): GeometryShape {
   const track = Math.max(1, Math.abs(input.lane))
   const above = input.lane <= 0
   const top = Math.min(input.sourceRect.y, input.targetRect.y)
@@ -525,7 +637,7 @@ function loopGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
   )
   const clearance = LOOP_CLEARANCE + EDGE_LANE_GAP * (track - 1)
   const laneY = above ? top - clearance : bottom + clearance
-  return stapleGeometry(input, laneY, above ? -LABEL_OFFSET : LABEL_OFFSET)
+  return stapleShape(input, laneY, above ? -LABEL_OFFSET : LABEL_OFFSET)
 }
 
 /**
@@ -533,13 +645,13 @@ function loopGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
  * 再从左侧沿水平切向进入 Left handle。左右两侧的绕行边都在节点盒之外，
  * 不会切进节点；收尾为水平切向，箭头不会被节点盖住一半。
  */
-function selfLoopGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
+function selfLoopShape(input: LanedEdgeInput): GeometryShape {
   const rect = input.sourceRect
   const track = Math.max(1, Math.abs(input.lane))
   const above = input.lane <= 0
   const lift = SELF_LOOP_LIFT + EDGE_LANE_GAP * (track - 1)
   const apexY = above ? rect.y - lift : rect.y + rect.height + lift
-  return stapleGeometry(input, apexY, above ? -LABEL_OFFSET : LABEL_OFFSET)
+  return stapleShape(input, apexY, above ? -LABEL_OFFSET : LABEL_OFFSET)
 }
 
 /**
@@ -550,34 +662,26 @@ function selfLoopGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
  * - 其余（含同轴直连）：一条完整的三次贝塞尔 S 形，两端沿 handle 切向进出。
  *
  * BaseEdge 以 labelX && labelY 判断标签是否渲染，因此标签锚点恰好为 0 时退让 0.01px。
+ * 内部先算 Cubic 段再拼 path：避障采样、候选长度都复用同一份段列表。
  */
 export function computeLanedEdgeGeometry(input: LanedEdgeInput): LanedEdgeGeometry {
   if (sameRect(input.sourceRect, input.targetRect)) {
-    return selfLoopGeometry(input)
+    return toGeometry(selfLoopShape(input))
   }
   if (boxesOverlap(input.sourceRect, input.targetRect)) {
-    return loopGeometry(input)
+    return toGeometry(loopShape(input))
   }
-  if (!isHorizontal(input.sourcePosition) || !isHorizontal(input.targetPosition)) {
-    // 竖向端口同样走有界避障候选：直连竖向 S / 中点带竖直切线的 S
-    return avoidObstacles(input, sCurveGeometry(input))
+  // 普通关系（含竖向端口）用有界避障候选；其余走分道或环绕
+  const candidates = normalCandidates(input)
+  if (candidates !== null) {
+    return toGeometry(avoidObstacles(input, candidates))
   }
-
   const facing =
     (input.sourcePosition === Position.Right && input.targetPosition === Position.Left) ||
     (input.sourcePosition === Position.Left && input.targetPosition === Position.Right)
-  if (!facing) {
-    return loopGeometry(input)
-  }
   // 双向/平行关系无论方向都走上下车道，保持两条曲线对称分居节点两侧
-  if (input.lane !== 0) {
-    return laneGeometry(input)
+  if (facing && input.lane !== 0) {
+    return toGeometry(laneShape(input))
   }
-  const direction = outward(input.sourcePosition).x
-  const gap = (input.targetX - input.sourceX) * direction
-  // 普通关系默认一条完整的三次贝塞尔 S 曲线；同轴时自然退化为直线
-  if (gap <= 0) {
-    return loopGeometry(input)
-  }
-  return avoidObstacles(input, sCurveGeometry(input))
+  return toGeometry(loopShape(input))
 }

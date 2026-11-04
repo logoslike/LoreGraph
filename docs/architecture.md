@@ -166,7 +166,10 @@ need one narrow behaviour.
   whole-list collapse). The canvas renders nodes and relations, creates relations by dragging
   from a node handle into a dialog (relation type + optional label), validates self-loops and
   duplicates, highlights search matches, fades everything outside the selected element's 1-hop
-  neighbourhood, folds a node's descendants on demand, and offers fit-view, zoom, Focus Mode,
+  neighbourhood, folds a node's descendants on demand (from 100 nodes or 300 relations the canvas
+  switches to on-demand relations: every node card stays, relation lines start hidden, clicking a
+  node reveals all of its direct incoming and outgoing relations, clicking a neighbour reveals the
+  next layer, and a node chevron toggles its relations), and offers fit-view, zoom, Focus Mode,
   delete, a global direction-arrow switch, and type-manager actions plus a 更多 menu with all
   three layout modes (force, layered, clustered by type), 恢复布局前位置, and graph-snippet
   import/export. Relations between the same pair of nodes are spread onto separate lanes by
@@ -185,7 +188,13 @@ toolbar, the search panel, create-node/relation dialogs, graph import/export dia
 type manager). The canvas is built on `@vue-flow/core`
 with the background, controls, and minimap add-ons; nodes are one custom Vue Flow node type
 mapped from store state, and dragging a node writes its snapped position back to the store on
-drag stop. Below 900 px the side panels become overlay drawers.
+drag stop. Relation geometry reads one shared obstacle snapshot; while dragging, `@node-drag`
+replaces only the moving node's rect and keeps every other rect object identical. The moving node
+therefore participates in every relation's obstacle test immediately: paths whose candidate
+corridor it enters or leaves reroute during the drag, while relations it cannot touch keep their
+previous path array (identity-checked) and are not recomputed. Ports are still chosen from the
+stable store coordinates and obstacle avoidance is recomputed exactly once on drop. Below 900 px
+the side panels become overlay drawers.
 
 ## Autosave and undo
 

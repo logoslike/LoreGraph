@@ -61,6 +61,11 @@ All screenshots are captured at 1440×900.
 - **Node folding.** A node with outgoing relations can be folded: its descendants and the
   relations reaching them leave the canvas, and a badge on the folded node counts what is hidden.
   Folding is view state, stored per world; it never enters the data model or the export files.
+- **Large graphs stay readable.** From 100 nodes or 300 relations the canvas keeps every node card
+  but starts with no relation lines; clicking a node reveals all of its direct incoming and
+  outgoing relations, and clicking a neighbour reveals the next layer. The chevron on a node
+  toggles its relations (keyboard accessible), the expansion state is kept per world, and locating
+  a node from search or the sidebar expands only that node's own hop.
 - **Readable relations.** Parallel and mutual relations between the same pair of nodes are spread
   onto separate lanes with labels on either side instead of stacking on one path, and a toolbar
   switch turns the direction arrows on or off for every relation at once.

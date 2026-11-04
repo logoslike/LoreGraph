@@ -5,7 +5,9 @@ import {
   assignEdgeLanes,
   choosePorts,
   computeLanedEdgeGeometry,
+  normalObstacleBounds,
   orderEdgesForVisualPriority,
+  rectTouchesBounds,
   type Point,
   type Rect,
 } from '@/components/graph/edge-lanes'
@@ -771,5 +773,115 @@ describe('密图固定坐标交叉', () => {
     }
     // 同样输入但不传障碍时仍走原直连曲线
     expect(computeLanedEdgeGeometry({ ...base, obstacles: [] }).path).toBe(direct.path)
+  })
+})
+describe('normalObstacleBounds 障碍预筛', () => {
+  /** 大图 fixture 里 n-001(420,0) → n-010(0,260) 的真实端口：左出、右入。 */
+  const sourceRect = nodeAt(420, 0)
+  const targetRect = nodeAt(0, 260)
+  const base = {
+    lane: 0,
+    sourceX: sourceRect.x,
+    sourceY: sourceRect.y + sourceRect.height / 2,
+    targetX: targetRect.x + targetRect.width,
+    targetY: targetRect.y + targetRect.height / 2,
+    sourcePosition: Position.Left,
+    targetPosition: Position.Right,
+    sourceRect,
+    targetRect,
+  }
+
+  it('返回覆盖两个候选曲线的包围盒：包含两端连接点', () => {
+    const bounds = normalObstacleBounds(base)
+
+    expect(bounds).not.toBeNull()
+    expect(bounds!.minX).toBeLessThanOrEqual(base.targetX)
+    expect(bounds!.maxX).toBeGreaterThanOrEqual(base.sourceX)
+    expect(bounds!.minY).toBeLessThanOrEqual(base.sourceY)
+    expect(bounds!.maxY).toBeGreaterThanOrEqual(base.targetY)
+  })
+
+  it('不走避障的关系返回 null：分道、自环、重叠、反向', () => {
+    expect(normalObstacleBounds({ ...base, lane: 1 })).toBeNull()
+    expect(normalObstacleBounds({ ...base, targetRect: { ...sourceRect } })).toBeNull()
+    expect(normalObstacleBounds({ ...base, targetRect: { ...nodeAt(400, 20) } })).toBeNull()
+    // 目标在源右侧：横向间隙为负，几何改走环绕
+    expect(normalObstacleBounds({ ...base, targetX: 470 })).toBeNull()
+  })
+
+  it('竖向端口同样有候选包围盒', () => {
+    const bounds = normalObstacleBounds({
+      ...base,
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+    })
+
+    expect(bounds).not.toBeNull()
+  })
+
+  it('走廊内的盒子被保留，走廊外的盒子被丢弃', () => {
+    const bounds = normalObstacleBounds(base)!
+
+    expect(rectTouchesBounds(nodeAt(128, 96), bounds)).toBe(true)
+    expect(rectTouchesBounds(nodeAt(-400, 0), bounds)).toBe(false)
+    expect(rectTouchesBounds(nodeAt(0, -260), bounds)).toBe(false)
+  })
+
+  it('容差与 nearbyObstacles 一致：贴边 1px 内保留，超出即丢弃', () => {
+    const bounds = normalObstacleBounds(base)!
+    const justOutside = {
+      x: bounds.minX - 0.5 - NODE_WIDTH,
+      y: 0,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    }
+    const clearlyOutside = {
+      x: bounds.minX - 2 - NODE_WIDTH,
+      y: 0,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    }
+
+    expect(rectTouchesBounds(justOutside, bounds)).toBe(true)
+    expect(rectTouchesBounds(clearlyOutside, bounds)).toBe(false)
+  })
+
+  it('预筛后的障碍列表与全量列表得到逐字节相同的几何', () => {
+    const bounds = normalObstacleBounds(base)!
+    const positions: Array<[number, number]> = [
+      [0, 0],
+      [128, 96],
+      [144, 96],
+      [320, 144],
+      [-400, 0],
+      [0, -260],
+      [120, 80],
+      [304, 168],
+    ]
+
+    for (const [x, y] of positions) {
+      const full = [nodeAt(x, y)]
+      const pruned = full.filter((rect) => rectTouchesBounds(rect, bounds))
+      const all = computeLanedEdgeGeometry({ ...base, obstacles: full })
+      const filtered = computeLanedEdgeGeometry({ ...base, obstacles: pruned })
+
+      expect(filtered.path, '障碍(' + x + ',' + y + ')').toBe(all.path)
+      expect(filtered.labelX).toBe(all.labelX)
+      expect(filtered.labelY).toBe(all.labelY)
+    }
+  })
+
+  it('移动中的节点进入走廊会改选候选，离开后回到直连曲线', () => {
+    const bounds = normalObstacleBounds(base)!
+    const direct = computeLanedEdgeGeometry({ ...base, obstacles: [] })
+    const inside = nodeAt(128, 96)
+    const outside = nodeAt(-400, 0)
+
+    // 进入走廊：直连候选命中 3 个采样点，平切线候选 0 命中，几何必须切换
+    expect(rectTouchesBounds(inside, bounds)).toBe(true)
+    expect(computeLanedEdgeGeometry({ ...base, obstacles: [inside] }).path).not.toBe(direct.path)
+    // 离开走廊：预筛直接丢掉这个盒子，几何回到直连曲线
+    expect(rectTouchesBounds(outside, bounds)).toBe(false)
+    expect(computeLanedEdgeGeometry({ ...base, obstacles: [outside] }).path).toBe(direct.path)
   })
 })

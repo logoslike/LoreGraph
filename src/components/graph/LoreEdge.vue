@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { BaseEdge, useVueFlow, type EdgeProps, type GraphNode } from '@vue-flow/core'
-import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from '@/services/layout.service'
-import { computeLanedEdgeGeometry, type Rect } from './edge-lanes'
+import { computed, inject } from 'vue'
+import { BaseEdge, useVueFlow, type EdgeProps } from '@vue-flow/core'
+import {
+  EDGE_OBSTACLES,
+  nodeRectOf,
+  pickObstacles,
+  reuseObstacles,
+  type NodeRects,
+} from './edge-obstacles'
+import { computeLanedEdgeGeometry, normalObstacleBounds, type Rect } from './edge-lanes'
 import type { LoreEdgeData } from './types'
 
 /**
@@ -12,23 +18,60 @@ import type { LoreEdgeData } from './types'
  */
 const props = defineProps<EdgeProps<LoreEdgeData>>()
 
-/** 只读取可见节点的盒，作为普通关系避障候选的输入；不写回、不进入持久数据。 */
-const flow = useVueFlow()
-const obstacles = computed(() =>
-  flow.nodes.value
-    .filter((node) => node.id !== props.source && node.id !== props.target)
-    .map(rectOf),
-)
+/** 几何不使用障碍时统一返回同一个空数组，避免下游 geometry 因空列表身份变化而失效。 */
+const NO_OBSTACLES: readonly Rect[] = []
 
-function rectOf(node: GraphNode): Rect {
-  const dimensions = node.dimensions
-  return {
-    x: node.computedPosition.x,
-    y: node.computedPosition.y,
-    width: dimensions.width > 0 ? dimensions.width : DEFAULT_NODE_WIDTH,
-    height: dimensions.height > 0 ? dimensions.height : DEFAULT_NODE_HEIGHT,
+/**
+ * 障碍几何优先用 GraphCanvas 提供的共享快照：拖动期间它按 @node-drag 增量更新，
+ * 移动中的节点盒实时参与避障，其余盒保持对象身份。
+ * 单独挂载（例如组件单测）时退回本地读取 Vue Flow 节点。
+ */
+const sharedObstacles = inject(EDGE_OBSTACLES, null)
+const flow = useVueFlow()
+
+const localObstacles = computed<NodeRects>(() => {
+  const rects = new Map<string, Rect>()
+  for (const node of flow.nodes.value) {
+    rects.set(node.id, nodeRectOf(node))
   }
-}
+  return rects
+})
+
+/** 端点盒只由端点位置与尺寸决定：拖动时只有被拖节点的关联边会重建它。 */
+const endpointRects = computed(() => ({
+  source: nodeRectOf(props.sourceNode),
+  target: nodeRectOf(props.targetNode),
+}))
+
+/**
+ * 只保留可能被这条关系的两个候选曲线命中的障碍盒。
+ * 候选只由端点与端口决定，所以包围盒并集与障碍无关：移动中的节点盒一旦进入或离开
+ * 走廊，列表就会变化并触发几何重算；内容与矩形身份都没变时返回上一份数组，
+ * 让下游 geometry computed 命中缓存——远端关系在拖动期间因此不会重算。
+ */
+let previousObstacles: readonly Rect[] = NO_OBSTACLES
+const obstacles = computed<readonly Rect[]>(() => {
+  const bounds = normalObstacleBounds({
+    lane: props.data?.lane ?? 0,
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    sourcePosition: props.sourcePosition,
+    targetPosition: props.targetPosition,
+    sourceRect: endpointRects.value.source,
+    targetRect: endpointRects.value.target,
+  })
+  if (bounds === null) {
+    return NO_OBSTACLES
+  }
+  const rects = sharedObstacles?.value ?? localObstacles.value
+  previousObstacles = reuseObstacles(
+    previousObstacles,
+    pickObstacles(rects, props.source, props.target, bounds),
+  )
+  return previousObstacles
+})
 
 const geometry = computed(() =>
   computeLanedEdgeGeometry({
@@ -39,8 +82,8 @@ const geometry = computed(() =>
     targetY: props.targetY,
     sourcePosition: props.sourcePosition,
     targetPosition: props.targetPosition,
-    sourceRect: rectOf(props.sourceNode),
-    targetRect: rectOf(props.targetNode),
+    sourceRect: endpointRects.value.source,
+    targetRect: endpointRects.value.target,
     obstacles: obstacles.value,
   }),
 )

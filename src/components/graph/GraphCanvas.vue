@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  markRaw,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  ref,
+  shallowRef,
+  watch,
+  watchEffect,
+} from 'vue'
 import {
   MarkerType,
   Panel,
@@ -25,12 +36,15 @@ import LoreNode from './LoreNode.vue'
 import CreateNodeDialog from './CreateNodeDialog.vue'
 import RelationDialog from './RelationDialog.vue'
 import TypeManagerDialog from './TypeManagerDialog.vue'
-import { assignEdgeLanes, choosePorts, orderEdgesForVisualPriority } from './edge-lanes'
+import { assignEdgeLanes, choosePorts, orderEdgesForVisualPriority, type Rect } from './edge-lanes'
+import { EDGE_OBSTACLES, nodeRectOf, sameRect, type NodeRects } from './edge-obstacles'
 import type { LoreEdgeData, LoreNodeData } from './types'
 import GraphSearchPanel from './GraphSearchPanel.vue'
 import { useGraphViewport } from '@/composables/useGraphViewport'
 import { useNodeCollapse } from '@/composables/useNodeCollapse'
+import { useNodeExpansion } from '@/composables/useNodeExpansion'
 import { computeCollapseVisibility } from '@/services/collapse'
+import { isBigGraph, relationCountsOf, visibleEdgesForGraph } from '@/services/expansion'
 import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from '@/services/layout.service'
 import type { LayoutMode } from '@/services/layout.service'
 import { neighborhoodOf } from '@/services/neighborhood'
@@ -83,9 +97,36 @@ const searchQuery = computed(() => ui.searchQuery.trim().toLowerCase())
 
 /** 节点折叠是视图状态：按当前世界持久化，不写节点模型、不进入导出文件。 */
 const collapse = useNodeCollapse(() => graph.universeId ?? '')
+
+/** 大图关系展开同样是视图状态：按世界持久化，不写节点模型、不进入导出文件。 */
+const expansion = useNodeExpansion(() => graph.universeId ?? '')
+
+/** 大图阈值只看 store 全量数据，不受类型筛选、聚焦或折叠影响。 */
+const bigGraph = computed(() => isBigGraph(graph.nodes.length, graph.edges.length))
+const expandedNodeIds = computed(() => new Set(expansion.expandedIds.value))
+
+/** 大图停用「隐藏后代节点」的旧折叠：节点卡片常驻，展开状态只筛选关系线。 */
+const EMPTY_COLLAPSE = { hiddenNodeIds: new Set<string>(), hiddenCounts: new Map<string, number>() }
 const collapseVisibility = computed(() =>
-  computeCollapseVisibility(collapse.collapsedIds.value, graph.edges),
+  bigGraph.value
+    ? EMPTY_COLLAPSE
+    : computeCollapseVisibility(collapse.collapsedIds.value, graph.edges),
 )
+
+/**
+ * 大图停用旧折叠时隐藏项全部恢复可见；节点删除到阈值以下后旧折叠重新生效。
+ * 此时选中项或聚焦中心可能正好落在被重新藏起来的后代里，必须同步清除，
+ * 否则 Inspector / 聚焦提示条会指向画布上已经不存在的节点。
+ */
+watch(bigGraph, (isBigGraphMode) => {
+  if (isBigGraphMode) {
+    return
+  }
+  clearHiddenSelection(collapseVisibility.value.hiddenNodeIds)
+})
+
+/** 每个节点的直接关系数：大图 chevron 的徽标与「是否可展开」判定。 */
+const relationCounts = computed(() => relationCountsOf(graph.edges))
 /** 有出边的节点才显示折叠按钮，与「子节点」定义一致。 */
 const parentNodeIds = computed(() => new Set(graph.edges.map((edge) => edge.source)))
 
@@ -125,11 +166,12 @@ const visibleNodes = computed(() =>
 )
 const visibleNodeIds = computed(() => new Set(visibleNodes.value.map((node) => node.id)))
 
-/** 边只在两端节点都可见时渲染，避免筛选或聚焦后出现悬空连线。 */
+/**
+ * 边只在两端节点都可见时渲染，避免筛选或聚焦后出现悬空连线；
+ * 大图再叠加「至少一端已展开」，小图保持全部可见。
+ */
 const visibleEdges = computed(() =>
-  graph.edges.filter(
-    (edge) => visibleNodeIds.value.has(edge.source) && visibleNodeIds.value.has(edge.target),
-  ),
+  visibleEdgesForGraph(graph.edges, visibleNodeIds.value, expandedNodeIds.value, bigGraph.value),
 )
 
 /** 相邻高亮的保留集合；无选中时为 null，画布不变淡。 */
@@ -163,10 +205,16 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
           neighborhood.value.nodeIds.has(node.id),
         isMatch: isMatch(node),
         isDimmed: neighborhood.value !== null && !neighborhood.value.nodeIds.has(node.id),
-        isCollapsed: parentNodeIds.value.has(node.id) && collapse.isCollapsed(node.id),
-        hiddenCount: collapseVisibility.value.hiddenCounts.get(node.id) ?? 0,
-        hasChildren: parentNodeIds.value.has(node.id),
+        // 大图停用旧折叠：节点常驻，卡片不显示折叠染色/徽标；collapsedIds 保留到恢复小图后再生效
+        isCollapsed:
+          !bigGraph.value && parentNodeIds.value.has(node.id) && collapse.isCollapsed(node.id),
+        hiddenCount: bigGraph.value ? 0 : (collapseVisibility.value.hiddenCounts.get(node.id) ?? 0),
+        hasChildren: !bigGraph.value && parentNodeIds.value.has(node.id),
         onToggleCollapse: () => toggleNodeCollapse(node.id),
+        relationsMode: bigGraph.value,
+        isExpanded: expandedNodeIds.value.has(node.id),
+        relationCount: relationCounts.value.get(node.id) ?? 0,
+        onToggleRelations: () => toggleNodeRelations(node.id),
       },
     }
   }),
@@ -178,23 +226,100 @@ const flowNodes = computed<Node<LoreNodeData>[]>(() =>
  */
 const edgeLanes = computed(() => assignEdgeLanes(visibleEdges.value))
 
-/**
- * 可见节点的盒：只读 Vue Flow 的 computedPosition/dimensions，
- * 供普通关系按相对方位选择端口；不写回、不进入持久数据。
- */
-const nodeRects = computed(() => {
-  const rects = new Map<string, { x: number; y: number; width: number; height: number }>()
+/** 节点尺寸只在挂载/尺寸变化时更新；拖动不改变尺寸，因此拖动期间保持稳定。 */
+const nodeSizes = computed(() => {
+  const sizes = new Map<string, { width: number; height: number }>()
   for (const node of flow.nodes.value) {
     const dimensions = node.dimensions
-    rects.set(node.id, {
-      x: node.computedPosition.x,
-      y: node.computedPosition.y,
+    sizes.set(node.id, {
       width: dimensions.width > 0 ? dimensions.width : DEFAULT_NODE_WIDTH,
       height: dimensions.height > 0 ? dimensions.height : DEFAULT_NODE_HEIGHT,
     })
   }
+  return sizes
+})
+
+/**
+ * 端口选择只看 store 里的坐标：拖动期间 store 不变，flowEdges 不会每帧重建，
+ * 边组件也就不会整层重渲染；drop 回写坐标后才按新位置精确重算端口。
+ * 这里刻意不读 Vue Flow 的 computedPosition，正是为了避免拖动期间每帧失效。
+ */
+const nodeRects = computed(() => {
+  const rects = new Map<string, Rect>()
+  for (const node of graph.nodes) {
+    const size = nodeSizes.value.get(node.id)
+    rects.set(node.id, {
+      x: node.position.x,
+      y: node.position.y,
+      width: size?.width ?? DEFAULT_NODE_WIDTH,
+      height: size?.height ?? DEFAULT_NODE_HEIGHT,
+    })
+  }
   return rects
 })
+
+/**
+ * 共享障碍几何：所有关系复用同一份节点盒快照。
+ * 拖动期间由 @node-drag 增量更新——只替换真正移动的节点盒，其余盒保持对象身份，
+ * 移动中的节点因此实时参与避障，而远端关系的候选列表逐项不变、几何不会被重算。
+ * 非拖动状态跟随 Vue Flow 的实际坐标（挂载、改尺寸、布局、删除后各同步一次）。
+ */
+const draggingNodeId = ref<string | null>(null)
+const obstacleRects = shallowRef<NodeRects>(new Map())
+
+/** 只更新传入节点里真的变了的盒；没变时连 Map 都不替换。 */
+function updateObstacleRects(nodes: readonly GraphNode[]): void {
+  const current = obstacleRects.value
+  let next: Map<string, Rect> | null = null
+  for (const node of nodes) {
+    const rect = nodeRectOf(node)
+    const existing = current.get(node.id)
+    if (existing !== undefined && sameRect(existing, rect)) {
+      continue
+    }
+    if (next === null) {
+      next = new Map(current)
+    }
+    next.set(node.id, rect)
+  }
+  if (next !== null) {
+    obstacleRects.value = next
+  }
+}
+
+/** 全量同步：保留仍然相等的旧盒对象，节点增删或尺寸变化时才替换 Map。 */
+function syncObstacleRects(nodes: readonly GraphNode[]): void {
+  const current = obstacleRects.value
+  const next = new Map<string, Rect>()
+  let changed = false
+  for (const node of nodes) {
+    const existing = current.get(node.id)
+    if (existing !== undefined) {
+      const rect = nodeRectOf(node)
+      if (sameRect(existing, rect)) {
+        next.set(node.id, existing)
+        continue
+      }
+      next.set(node.id, rect)
+    } else {
+      next.set(node.id, nodeRectOf(node))
+    }
+    changed = true
+  }
+  if (!changed && next.size === current.size) {
+    return
+  }
+  obstacleRects.value = next
+}
+
+watchEffect(() => {
+  // 拖动期间由 @node-drag 增量更新，避免每帧重建整张表、丢掉其它盒的对象身份
+  if (draggingNodeId.value !== null) {
+    return
+  }
+  syncObstacleRects(flow.nodes.value)
+})
+provide(EDGE_OBSTACLES, obstacleRects)
 
 /**
  * 给箭头颜色叠加与描边一致的透明度：关系色是十六进制时生成 8 位色，
@@ -426,7 +551,16 @@ async function focusNode(nodeId: string): Promise<boolean> {
  */
 function toggleNodeCollapse(nodeId: string): void {
   collapse.toggle(nodeId)
-  const hidden = computeCollapseVisibility(collapse.collapsedIds.value, graph.edges).hiddenNodeIds
+  clearHiddenSelection(
+    computeCollapseVisibility(collapse.collapsedIds.value, graph.edges).hiddenNodeIds,
+  )
+}
+
+/**
+ * 选中项或聚焦中心落在给定的隐藏集合里时清除，避免 Inspector / 聚焦提示条
+ * 指向画布上不存在的元素。折叠开关与「大图降回小图」共用这一套清理。
+ */
+function clearHiddenSelection(hidden: ReadonlySet<string>): void {
   if (graph.selectedNodeId !== null && hidden.has(graph.selectedNodeId)) {
     graph.selectNode(null)
   }
@@ -438,6 +572,62 @@ function toggleNodeCollapse(nodeId: string): void {
     ui.exitFocus()
   }
 }
+
+/**
+ * 大图里收起/展开一个节点的直接关系。收起后若当前选中的关系因此不可见，
+ * 立即清除选中态，避免 Inspector 指向画布上已消失的关系。
+ */
+function toggleNodeRelations(nodeId: string): void {
+  expansion.toggle(nodeId)
+  clearHiddenEdgeSelection()
+}
+
+/** 当前可见关系里是否包含指定 id。 */
+function isEdgeVisible(edgeId: string): boolean {
+  return visibleEdges.value.some((edge) => edge.id === edgeId)
+}
+
+/** 选中关系被筛选/聚焦/收起隐藏时清空选中态。 */
+function clearHiddenEdgeSelection(): void {
+  if (graph.selectedEdgeId !== null && !isEdgeVisible(graph.selectedEdgeId)) {
+    graph.selectEdge(null)
+  }
+}
+
+/**
+ * 显式选边（Inspector 的所属关系、画布点边）后若目标边不可见：
+ * 大图只展开 source 端点一跳让这条边出现，不扩散到 target 或其它分支；
+ * 展开后仍不可见（被筛选/聚焦排除）则清空选中，Inspector 回到空态。
+ */
+watch(
+  () => graph.selectedEdgeId,
+  (edgeId) => {
+    if (edgeId === null || isEdgeVisible(edgeId)) {
+      return
+    }
+    if (bigGraph.value) {
+      const edge = graph.edgeById(edgeId)
+      if (edge) {
+        expansion.expand(edge.source)
+      }
+    }
+    if (!isEdgeVisible(edgeId)) {
+      graph.selectEdge(null)
+    }
+  },
+)
+
+/** 可见关系集合变化（收起、筛选、聚焦、删除）后，隐藏的选中边不再保留。 */
+watch(visibleEdges, () => clearHiddenEdgeSelection())
+
+/** 删除节点/切换世界后清理已不存在的展开记录，避免存储里留下幽灵 id。 */
+watch(
+  () => graph.nodes,
+  (nodes) => {
+    expansion.retain(new Set(nodes.map((node) => node.id)))
+  },
+  { flush: 'post' },
+)
 
 /**
  * 把目标节点带回可见状态：退出聚焦、解除冲突的类型筛选、展开藏起它的折叠祖先。
@@ -454,7 +644,12 @@ function prepareNodeNavigation(nodeId: string): boolean {
   if (ui.activeTypeKeys.length > 0 && !ui.activeTypeKeys.includes(node.type)) {
     ui.clearTypeFilters()
   }
-  collapse.revealNode(nodeId, graph.edges)
+  if (bigGraph.value) {
+    // 大图定位只展开目标自身一跳，不扩散到邻居分支
+    expansion.expand(nodeId)
+  } else {
+    collapse.revealNode(nodeId, graph.edges)
+  }
   graph.selectNode(nodeId)
   return true
 }
@@ -493,7 +688,21 @@ function onSearchFocus(nodeId: string): void {
   void focusNodeInMode(nodeId)
 }
 
+function onNodeDragStart(event: NodeDragEvent): void {
+  // 拖动期间改由 @node-drag 增量更新；先把起点盒对齐到 Vue Flow 的实际坐标
+  draggingNodeId.value = event.node.id
+  updateObstacleRects(event.nodes)
+}
+
+/** 拖动每帧只替换移动中的节点盒，其余盒对象身份不变。 */
+function onNodeDrag(event: NodeDragEvent): void {
+  updateObstacleRects(event.nodes)
+}
+
 async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
+  // 解除增量模式：落点盒立即对齐，随后由 watchEffect 按 store 坐标全量同步一次
+  draggingNodeId.value = null
+  updateObstacleRects(event.nodes)
   // 拖拽结束才回写 store，拖动过程不产生保存
   const position = {
     x: Math.round(event.node.position.x),
@@ -503,6 +712,10 @@ async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
 }
 
 function onNodeClick(event: NodeMouseEvent): void {
+  // 大图：点击节点即展开它的全部直接关系（入边 + 出边），同时选中
+  if (bigGraph.value) {
+    expansion.expand(event.node.id)
+  }
   graph.selectNode(event.node.id)
 }
 
@@ -667,6 +880,8 @@ defineExpose({
       @node-click="onNodeClick"
       @edge-click="onEdgeClick"
       @pane-click="onPaneClick"
+      @node-drag-start="onNodeDragStart"
+      @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
     >
       <Background :gap="18" :size="1.2" color="var(--graph-dot)" />

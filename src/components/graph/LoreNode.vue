@@ -10,6 +10,10 @@ const props = defineProps<NodeProps<LoreNodeData>>()
 const icon = computed(() => getIconComponent(props.data.iconName))
 const color = computed(() => props.data.color || '#6366f1')
 
+/** 大图模式：chevron 表示「展开/收起直接关系」，不再折叠下级节点。 */
+const relationsMode = computed(() => props.data.relationsMode)
+const showRelationsToggle = computed(() => relationsMode.value && props.data.relationCount > 0)
+
 /** 折叠按钮的读屏名称：同时说明动作与节点名。 */
 const collapseLabel = computed(
   () => `${props.data.isCollapsed ? '展开' : '收起'}「${props.data.name}」的下级节点`,
@@ -20,8 +24,20 @@ const collapseTitle = computed(() =>
   props.data.isCollapsed ? `展开下级节点（当前收起 ${props.data.hiddenCount} 个）` : '收起下级节点',
 )
 
+/** 关系按钮的读屏名称与提示：说明动作、节点名与直接关系数。 */
+const relationsLabel = computed(
+  () => `${props.data.isExpanded ? '收起' : '展开'}「${props.data.name}」的关系`,
+)
+const relationsTitle = computed(() =>
+  props.data.isExpanded ? '收起直接关系' : `展开直接关系（${props.data.relationCount} 条）`,
+)
+
 function toggleCollapse(): void {
   props.data.onToggleCollapse?.()
+}
+
+function toggleRelations(): void {
+  props.data.onToggleRelations?.()
 }
 </script>
 
@@ -34,13 +50,16 @@ function toggleCollapse(): void {
     :data-neighbor="data.isNeighbor ? 'true' : 'false'"
     :data-dimmed="data.isDimmed ? 'true' : 'false'"
     :data-collapsed="data.isCollapsed ? 'true' : 'false'"
+    :data-relations-mode="relationsMode ? 'true' : 'false'"
+    :data-relations-expanded="relationsMode ? (data.isExpanded ? 'true' : 'false') : undefined"
     :class="{
       'is-selected': data.isSelected,
       'is-neighbor': data.isNeighbor,
       'is-match': data.isMatch,
       'is-dimmed': data.isDimmed,
       'is-collapsed': data.isCollapsed,
-      'has-toggle': data.hasChildren,
+      'is-expanded': relationsMode && data.isExpanded,
+      'has-toggle': data.hasChildren || showRelationsToggle,
     }"
     :style="{ '--lore-color': color }"
   >
@@ -100,9 +119,29 @@ function toggleCollapse(): void {
       <span class="lore-node__type">{{ data.typeLabel }}</span>
     </span>
 
-    <!-- 折叠/展开只对有出边的节点出现；nodrag 防止点击时拖动画布节点 -->
+    <!-- 大图模式：关系展开/收起；原生 button，Enter/Space 可直接操作 -->
     <button
-      v-if="data.hasChildren"
+      v-if="showRelationsToggle"
+      type="button"
+      class="lore-node__collapse nodrag nopan"
+      data-testid="node-relations-toggle"
+      :data-node-id="id"
+      :aria-expanded="data.isExpanded"
+      :aria-label="relationsLabel"
+      :title="relationsTitle"
+      @click.stop="toggleRelations"
+      @pointerdown.stop
+    >
+      <ChevronDown v-if="data.isExpanded" :size="13" />
+      <template v-else>
+        <ChevronRight :size="13" />
+        <span class="lore-node__hidden-count" aria-hidden="true">{{ data.relationCount }}</span>
+      </template>
+    </button>
+
+    <!-- 小图模式：折叠/展开只对有出边的节点出现；nodrag 防止点击时拖动画布节点 -->
+    <button
+      v-else-if="!relationsMode && data.hasChildren"
       type="button"
       class="lore-node__collapse nodrag nopan"
       data-testid="node-collapse-toggle"
@@ -162,6 +201,11 @@ function toggleCollapse(): void {
 /* 收起态：轻微染色 + 隐藏数量徽标，保留节点本身仍可选中与拖动 */
 .lore-node.is-collapsed {
   background: color-mix(in srgb, var(--lore-color) 6%, var(--bg));
+}
+
+/* 大图里已展开直接关系的节点：极轻的类型色底，帮助区分「关系已展开/未展开」 */
+.lore-node.is-expanded {
+  background: color-mix(in srgb, var(--lore-color) 4%, var(--bg));
 }
 
 /* 1 跳邻域节点：用类型色的细描边提示「与选中项有关」，但不抢选中节点的焦点 */
@@ -255,7 +299,8 @@ function toggleCollapse(): void {
 .lore-node:hover .lore-node__collapse,
 .lore-node:focus-within .lore-node__collapse,
 .lore-node.is-selected .lore-node__collapse,
-.lore-node.is-collapsed .lore-node__collapse {
+.lore-node.is-collapsed .lore-node__collapse,
+.lore-node.is-expanded .lore-node__collapse {
   opacity: 1;
 }
 

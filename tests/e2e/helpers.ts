@@ -270,6 +270,42 @@ export async function waitForPersistedNode(
     )
     .not.toHaveLength(0)
 }
+/** 导入世界会重映射全部节点/关系 id：从 IndexedDB 读回「名称 → 节点 id」与「端点名称 → 关系 id」。 */
+export interface WorldIds {
+  nodeId: (name: string) => string
+  edgeId: (sourceName: string, targetName: string) => string
+}
+
+/**
+ * 导入世界（完整世界或图谱片段）后 id 会被重新生成，fixture 里写死的 id 不会出现在 DOM 中。
+ * 这里按业务名称从 IndexedDB 反查真实 id，供 data-node-id / 关系选择器使用。
+ */
+export async function resolveWorldIds(page: Page): Promise<WorldIds> {
+  const nodes = await readTable<{ id: string; name: string }>(page, 'nodes')
+  const edges = await readTable<{ id: string; source: string; target: string }>(page, 'edges')
+  const nodeIdByName = new Map(nodes.map((node) => [node.name, node.id]))
+  const edgeIdByKey = new Map(edges.map((edge) => [edge.source + '->' + edge.target, edge.id]))
+
+  const nodeId = (name: string): string => {
+    const id = nodeIdByName.get(name)
+    if (id === undefined) {
+      throw new Error('IndexedDB 里找不到节点「' + name + '」')
+    }
+    return id
+  }
+
+  return {
+    nodeId,
+    edgeId: (sourceName: string, targetName: string): string => {
+      const id = edgeIdByKey.get(nodeId(sourceName) + '->' + nodeId(targetName))
+      if (id === undefined) {
+        throw new Error('IndexedDB 里找不到关系「' + sourceName + ' → ' + targetName + '」')
+      }
+      return id
+    },
+  }
+}
+
 /** 打开图谱工具栏的「更多」下拉菜单（布局与数据操作都收在这里）。 */
 export async function openGraphMoreMenu(page: Page): Promise<void> {
   await page.getByTestId('more-menu-btn').click()

@@ -24,6 +24,14 @@ export interface LoreNodeData {
   hasChildren: boolean
   /** 切换折叠状态；具体状态与持久化由 GraphCanvas 负责。 */
   onToggleCollapse?: () => void
+  /** 是否处于「大图关系按需展开」模式：节点常驻，关系按展开状态筛选。 */
+  relationsMode: boolean
+  /** 该节点是否已展开直接关系（仅大图模式有意义）。 */
+  isExpanded: boolean
+  /** 该节点的直接关系数（入边 + 出边），用于关系收起徽标。 */
+  relationCount: number
+  /** 切换关系展开状态；大图模式下由 GraphCanvas 负责持久化。 */
+  onToggleRelations?: () => void
 }
 
 /** 传给自定义关系组件的业务数据。 */
