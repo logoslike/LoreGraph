@@ -1,4 +1,5 @@
 import { computed, ref, toValue, watch, type ComputedRef, type MaybeRefOrGetter } from 'vue'
+import { isRelatedToExpanded, type ExpansionEdge } from '@/services/expansion'
 
 const STORAGE_PREFIX = 'loregraph.node-expansion'
 
@@ -72,6 +73,8 @@ export interface UseNodeExpansionReturn {
   storageKey: ComputedRef<string | null>
   isExpanded: (nodeId: string) => boolean
   expand: (nodeId: string) => void
+  /** 卡片点击语义：与已展开节点无直接关联时收起整组旧展开，只保留新节点。 */
+  expandOnClick: (nodeId: string, edges: readonly ExpansionEdge[]) => void
   collapse: (nodeId: string) => void
   toggle: (nodeId: string) => void
   collapseAll: () => void
@@ -115,6 +118,22 @@ export function useNodeExpansion(universeId: MaybeRefOrGetter<string>): UseNodeE
     commit([...state.value, nodeId])
   }
 
+  /**
+   * 大图点击节点：目标与已展开节点有直接关系（或重复点自己）时延用累加展开；
+   * 完全无关联时说明用户换到了另一条关系链，整组旧展开收起，只保留新节点。
+   * 重置只提交一次，避免先写空集合再写新节点的两次落盘。
+   */
+  function expandOnClick(nodeId: string, edges: readonly ExpansionEdge[]): void {
+    if (nodeId === '') {
+      return
+    }
+    if (isRelatedToExpanded(nodeId, state.value, edges)) {
+      expand(nodeId)
+      return
+    }
+    commit([nodeId])
+  }
+
   function collapse(nodeId: string): void {
     if (!isExpanded(nodeId)) {
       return
@@ -150,6 +169,7 @@ export function useNodeExpansion(universeId: MaybeRefOrGetter<string>): UseNodeE
     storageKey,
     isExpanded,
     expand,
+    expandOnClick,
     collapse,
     toggle,
     collapseAll,

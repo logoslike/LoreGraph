@@ -139,6 +139,71 @@ describe('retain 清理已不存在的展开 id', () => {
   })
 })
 
+describe('expandOnClick：大图卡片点击的关联规则', () => {
+  const EDGES = [
+    { source: 'a', target: 'b' },
+    { source: 'b', target: 'c' },
+    { source: 'far', target: 'far-2' },
+  ]
+
+  it('点邻居时保留已有展开并继续累加', () => {
+    const expansion = useNodeExpansion(UNIVERSE)
+    expansion.expandOnClick('a', EDGES)
+    expansion.expandOnClick('b', EDGES)
+
+    expect(expansion.expandedIds.value).toEqual(['a', 'b'])
+    expect(stored(UNIVERSE)).toEqual({ expandedNodeIds: ['a', 'b'] })
+  })
+
+  it('点无关节点时收起整组旧展开，只保留新节点', () => {
+    const expansion = useNodeExpansion(UNIVERSE)
+    expansion.expand('a')
+    expansion.expand('b')
+    expansion.expandOnClick('far', EDGES)
+
+    expect(expansion.expandedIds.value).toEqual(['far'])
+    expect(expansion.isExpanded('a')).toBe(false)
+    expect(stored(UNIVERSE)).toEqual({ expandedNodeIds: ['far'] })
+  })
+
+  it('刷新后恢复的展开，点到无关节点同样被整组收起并落盘', () => {
+    const before = useNodeExpansion(UNIVERSE)
+    before.expand('a')
+    before.expand('b')
+
+    const restored = useNodeExpansion(UNIVERSE)
+    expect(restored.expandedIds.value).toEqual(['a', 'b'])
+
+    restored.expandOnClick('far', EDGES)
+
+    expect(restored.expandedIds.value).toEqual(['far'])
+    expect(useNodeExpansion(UNIVERSE).expandedIds.value).toEqual(['far'])
+    expect(stored(UNIVERSE)).toEqual({ expandedNodeIds: ['far'] })
+  })
+
+  it('重复点同一节点保持幂等，不重写存储', () => {
+    const expansion = useNodeExpansion(UNIVERSE)
+    expansion.expand('a')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+    expansion.expandOnClick('a', EDGES)
+
+    expect(expansion.expandedIds.value).toEqual(['a'])
+    expect(setItem).not.toHaveBeenCalled()
+  })
+
+  it('整组收起只提交一次，不会先写空集合', () => {
+    const expansion = useNodeExpansion(UNIVERSE)
+    expansion.expand('a')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+    expansion.expandOnClick('far', EDGES)
+
+    expect(setItem).toHaveBeenCalledTimes(1)
+    expect(stored(UNIVERSE)).toEqual({ expandedNodeIds: ['far'] })
+  })
+})
+
 describe('存储损坏或不可用时的容错', () => {
   it('不是合法 JSON 时退回空集合', () => {
     localStorage.setItem(nodeExpansionKey(UNIVERSE), '{not json')

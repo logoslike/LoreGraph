@@ -4,6 +4,7 @@ import {
   BIG_GRAPH_NODE_THRESHOLD,
   isBigGraph,
   isEdgeVisibleForExpansion,
+  isRelatedToExpanded,
   relationCountsOf,
   visibleEdgesForGraph,
 } from '@/services/expansion'
@@ -77,6 +78,38 @@ describe('visibleEdgesForGraph', () => {
 
   it('展开集合里的幽灵 id 不会凭空点亮关系', () => {
     expect(visibleEdgesForGraph(edges, allNodes, new Set(['missing']), true)).toEqual([])
+  })
+})
+
+describe('isRelatedToExpanded', () => {
+  it('与任一已展开节点有直接边即算关联，入边出边都认', () => {
+    const edges = [edge('e1', 'a', 'b'), edge('e2', 'c', 'a')]
+    expect(isRelatedToExpanded('b', ['a'], edges)).toBe(true)
+    expect(isRelatedToExpanded('c', ['a'], edges)).toBe(true)
+    expect(isRelatedToExpanded('c', ['a', 'b'], edges)).toBe(true)
+  })
+
+  it('关联到较早展开、而不是最后展开的节点时同样保留', () => {
+    const edges = [edge('e1', 'a', 'b'), edge('e2', 'x', 'y')]
+    // a 先展开，y 后展开（最后点击）；x 只与 a 相邻，仍应算关联
+    expect(isRelatedToExpanded('x', ['a', 'y'], edges)).toBe(true)
+  })
+
+  it('与已展开节点没有直接边时不算关联', () => {
+    const edges = [edge('e1', 'a', 'b'), edge('e2', 'b', 'c')]
+    expect(isRelatedToExpanded('c', ['a'], edges)).toBe(false)
+    expect(isRelatedToExpanded('d', ['a', 'b'], edges)).toBe(false)
+  })
+
+  it('自环不能让旧分支保留：只与自身相连不算关联', () => {
+    const edges = [edge('e-loop', 'c', 'c'), edge('e1', 'a', 'b')]
+    expect(isRelatedToExpanded('c', ['a'], edges)).toBe(false)
+  })
+
+  it('自身已展开（重复点击）或集合为空时视为关联，保持幂等', () => {
+    expect(isRelatedToExpanded('a', ['a'], [])).toBe(true)
+    expect(isRelatedToExpanded('a', [], [])).toBe(true)
+    expect(isRelatedToExpanded('a', ['b'], [edge('e1', 'b', 'c')])).toBe(false)
   })
 })
 

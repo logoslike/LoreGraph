@@ -49,6 +49,34 @@ export function visibleEdgesForGraph<T extends ExpansionEdge>(
 }
 
 /**
+ * 点击节点时判断它是否与当前已展开的节点有关联。
+ *
+ * 关联的定义：存在一条直接关系（入边或出边都算），另一端是「另一个」已展开节点。
+ * - 自身已在集合里（重复点击）或集合为空时视为关联：调用方因此只做幂等展开，不收起旧分支；
+ * - 自环只把节点与它自己连起来，不能证明与其它已展开节点有关，所以不算关联；
+ * - 这样点开一条关系链后继续点链上的邻居会保留已有展开，点到无关分支才整组收起。
+ */
+export function isRelatedToExpanded(
+  nodeId: string,
+  expandedNodeIds: Iterable<string>,
+  edges: readonly ExpansionEdge[],
+): boolean {
+  const expanded = new Set(expandedNodeIds)
+  if (expanded.size === 0 || expanded.has(nodeId)) {
+    return true
+  }
+  return edges.some((edge) => {
+    if (edge.source === nodeId) {
+      return edge.target !== nodeId && expanded.has(edge.target)
+    }
+    if (edge.target === nodeId) {
+      return expanded.has(edge.source)
+    }
+    return false
+  })
+}
+
+/**
  * 每个节点的直接关系数（入边 + 出边），用于节点 chevron 的徽标与「是否可展开」判断。
  * 自环只计一次；悬空端点同样计数，避免脏数据让按钮闪断。
  */

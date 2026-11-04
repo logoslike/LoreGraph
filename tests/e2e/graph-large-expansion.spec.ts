@@ -19,6 +19,7 @@ import {
 /**
  * 大图关系按需展开（nodes>=100 或 edges>=300）：
  * 节点卡片常驻、初始不显示关系线；点击节点显示全部直接入/出边，点击邻居再展开下一层；
+ * 点到与已展开节点无直接关系的节点时整组收起旧展开（旧关系线与旧高亮一起消失），
  * 搜索定位只展开目标一跳；展开态按世界持久化；隐藏的选中边会被清除。
  *
  * 注意：导入世界会重映射全部节点/关系 id，因此断言一律按「节点名称」定位，
@@ -98,6 +99,78 @@ test.describe('大图关系按需展开', () => {
     // 点击空白只取消选中，已展开的关系保持可见
     await clickBlank(page)
     await expect(page.locator('.vue-flow__edge')).toHaveCount(3)
+  })
+
+  test('点无关节点整组收起旧展开并取消旧高亮；点邻居则保留继续展开', async ({ page }, testInfo) => {
+    const ids = await openLargeWorld(page, testInfo)
+    const first = ids.edgeId(largeNodeName(0), largeNodeName(1))
+    const far = ids.edgeId(largeNodeName(90), largeNodeName(91))
+    const farNext = ids.edgeId(largeNodeName(91), largeNodeName(92))
+
+    await nodeByName(page, 0).click()
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2)
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'true')
+    await expect(edgeById(page, first)).toHaveCount(1)
+
+    // n-090 与 n-000 没有直接关系：旧展开整组收起，只剩它自己的一跳关系
+    await nodeByName(page, 90).click()
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(1)
+    await expect(edgeById(page, far)).toHaveCount(1)
+    await expect(edgeById(page, first)).toHaveCount(0)
+
+    // 旧节点的展开高亮与选中/邻居高亮一起取消：只有当前节点保留展开染色
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'false')
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-dimmed', 'true')
+    await expect(page.locator('.lore-node.is-expanded')).toHaveCount(1)
+    await expect(nodeByName(page, 90)).toHaveAttribute('data-relations-expanded', 'true')
+
+    // n-091 是 n-090 的邻居：有关联，保留 n-090 的展开并累加下一层
+    await nodeByName(page, 91).click()
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2)
+    await expect(edgeById(page, far)).toHaveCount(1)
+    await expect(edgeById(page, farNext)).toHaveCount(1)
+    await expect(nodeByName(page, 90)).toHaveAttribute('data-relations-expanded', 'true')
+    await expect(nodeByName(page, 91)).toHaveAttribute('data-relations-expanded', 'true')
+  })
+
+  test('刷新恢复的展开状态在点到无关节点后被重置并持久化', async ({ page }, testInfo) => {
+    const ids = await openLargeWorld(page, testInfo)
+    const far = ids.edgeId(largeNodeName(90), largeNodeName(91))
+
+    await nodeByName(page, 0).click()
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2)
+
+    await page.reload()
+    await expect(page.getByTestId('graph-canvas')).toBeVisible()
+    await expect(page.getByTestId('lore-node')).toHaveCount(LARGE_NODE_COUNT, { timeout: 60_000 })
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2, { timeout: 30_000 })
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'true')
+
+    // 恢复出来的展开组同样按关联规则重置
+    await nodeByName(page, 90).click()
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(1)
+    await expect(edgeById(page, far)).toHaveCount(1)
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'false')
+
+    const storedExpanded = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((item) =>
+        item.startsWith('loregraph.node-expansion.'),
+      )
+      if (key === undefined) {
+        return null
+      }
+      const raw = localStorage.getItem(key)
+      return raw === null ? null : (JSON.parse(raw) as { expandedNodeIds?: string[] })
+    })
+    expect(storedExpanded?.expandedNodeIds).toEqual([ids.nodeId(largeNodeName(90))])
+
+    // 再刷新确认重置后的状态已落盘，旧分支不会复活
+    await page.reload()
+    await expect(page.getByTestId('graph-canvas')).toBeVisible()
+    await expect(page.getByTestId('lore-node')).toHaveCount(LARGE_NODE_COUNT, { timeout: 60_000 })
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(1, { timeout: 30_000 })
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'false')
+    await expect(nodeByName(page, 90)).toHaveAttribute('data-relations-expanded', 'true')
   })
 
   test('chevron 可用键盘收起关系；被隐藏的选中边同步清除选中态', async ({ page }, testInfo) => {

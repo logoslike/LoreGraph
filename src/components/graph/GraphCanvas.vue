@@ -712,9 +712,10 @@ async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
 }
 
 function onNodeClick(event: NodeMouseEvent): void {
-  // 大图：点击节点即展开它的全部直接关系（入边 + 出边），同时选中
+  // 大图：点击节点即展开它的全部直接关系（入边 + 出边），同时选中；
+  // 与已展开节点无直接关联时说明换到了另一条关系链，旧展开与旧高亮一并收起
   if (bigGraph.value) {
-    expansion.expand(event.node.id)
+    expansion.expandOnClick(event.node.id, graph.edges)
   }
   graph.selectNode(event.node.id)
 }
