@@ -727,6 +727,11 @@ function onEdgeClick(event: EdgeMouseEvent): void {
 function onPaneClick(): void {
   graph.selectNode(null)
   graph.selectEdge(null)
+  // 点击空白画布即离开当前关系链：收回点击节点时展开的直接关系，
+  // 避免取消选中后仍留下上一组关系线
+  if (bigGraph.value) {
+    expansion.collapseAll()
+  }
 }
 
 /** 进入/退出聚焦模式：工具栏按钮与 F 键共用，未选中节点且未聚焦时是空操作。 */

@@ -291,12 +291,9 @@ test.describe('大图拖动：端点跟随、非关联边稳定、drop 精确重
     // 展开远端分支与拖动目标：far 成为「非关联边」，outgoing 成为「关联边」
     await locateViaSearch(page, largeNodeName(90))
     await locateViaSearch(page, largeNodeName(0))
-    const canvas = await page.getByTestId('graph-canvas').boundingBox()
-    if (canvas === null) {
-      throw new Error('画布不可见')
-    }
-    // 清掉定位产生的选中态，避免相邻变淡影响断言
-    await page.mouse.click(canvas.x + canvas.width - 60, canvas.y + 60)
+    // 清掉定位产生的选中态，避免相邻变淡影响断言。
+    // 空白点击现在会收回展开的关系线，这里用 Esc 只取消选中、保留已展开分支。
+    await page.keyboard.press('Escape')
     await waitTwoFrames(page)
 
     await expect(page.locator('.vue-flow__edge')).toHaveCount(3)
@@ -389,11 +386,9 @@ test.describe('大图实时避障：移动中的节点参与其它关系的障�
     await locateViaSearch(page, largeNodeName(90))
     await locateViaSearch(page, largeNodeName(10))
     await locateViaSearch(page, largeNodeName(0))
-    const canvas = await page.getByTestId('graph-canvas').boundingBox()
-    if (canvas === null) {
-      throw new Error('画布不可见')
-    }
-    await page.mouse.click(canvas.x + canvas.width - 60, canvas.y + 60)
+    // 清掉定位产生的选中态，避免相邻变淡影响断言。
+    // 空白点击现在会收回展开的关系线，这里用 Esc 只取消选中、保留已展开分支。
+    await page.keyboard.press('Escape')
     await waitTwoFrames(page)
 
     await expect(page.locator('.vue-flow__edge')).toHaveCount(4)

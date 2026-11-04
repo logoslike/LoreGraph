@@ -20,6 +20,7 @@ import {
  * 大图关系按需展开（nodes>=100 或 edges>=300）：
  * 节点卡片常驻、初始不显示关系线；点击节点显示全部直接入/出边，点击邻居再展开下一层；
  * 点到与已展开节点无直接关系的节点时整组收起旧展开（旧关系线与旧高亮一起消失），
+ * 点击节点外的空白画布时同样整组收回展开的关系线；
  * 搜索定位只展开目标一跳；展开态按世界持久化；隐藏的选中边会被清除。
  *
  * 注意：导入世界会重映射全部节点/关系 id，因此断言一律按「节点名称」定位，
@@ -95,10 +96,15 @@ test.describe('大图关系按需展开', () => {
     await expect(edgeById(page, next)).toHaveCount(1)
     await expect(edgeById(page, far)).toHaveCount(0)
     await expect(nodeByName(page, 1)).toHaveAttribute('data-relations-expanded', 'true')
+    await expect(page.locator('.lore-node.is-expanded')).toHaveCount(2)
 
-    // 点击空白只取消选中，已展开的关系保持可见
+    // 点击空白取消选中，并收回点击节点时展开的关系线与展开染色
     await clickBlank(page)
-    await expect(page.locator('.vue-flow__edge')).toHaveCount(3)
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(0)
+    await expect(page.locator('.lore-node.is-expanded')).toHaveCount(0)
+    await expect(page.locator('.lore-node[data-selected="true"]')).toHaveCount(0)
+    await expect(nodeByName(page, 0)).toHaveAttribute('data-relations-expanded', 'false')
+    await expect(nodeByName(page, 1)).toHaveAttribute('data-relations-expanded', 'false')
   })
 
   test('点无关节点整组收起旧展开并取消旧高亮；点邻居则保留继续展开', async ({ page }, testInfo) => {
