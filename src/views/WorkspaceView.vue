@@ -115,7 +115,7 @@ useShortcuts({
   },
   onToggleFocus: () => {
     if (ready.value) {
-      graphCanvasRef.value?.toggleFocus()
+      graphCanvasRef.value?.handleFocusShortcut()
     }
   },
   onFocusSearch: () => {

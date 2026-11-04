@@ -84,6 +84,8 @@ const createOpen = ref(false)
 const relationOpen = ref(false)
 const typeManagerOpen = ref(false)
 const searchOpen = ref(false)
+/** 指针当前悬停的节点 id；F 键据此优先聚焦悬停目标。 */
+const hoveredNodeId = ref<string | null>(null)
 /** 待确认的连线：由 @connect 记录，确认后写入 store。 */
 const pendingConnection = ref<{ source: string; target: string } | null>(null)
 
@@ -165,6 +167,13 @@ const visibleNodes = computed(() =>
   ),
 )
 const visibleNodeIds = computed(() => new Set(visibleNodes.value.map((node) => node.id)))
+
+/** 节点被聚焦/筛选卸载时不会收到 mouseleave，悬停目标必须在不可见时立即失效。 */
+watch(visibleNodeIds, (ids) => {
+  if (hoveredNodeId.value !== null && !ids.has(hoveredNodeId.value)) {
+    hoveredNodeId.value = null
+  }
+})
 
 /**
  * 边只在两端节点都可见时渲染，避免筛选或聚焦后出现悬空连线；
@@ -711,6 +720,16 @@ async function onNodeDragStop(event: NodeDragEvent): Promise<void> {
   await graph.moveNode(event.node.id, position)
 }
 
+function onNodeMouseEnter(event: NodeMouseEvent): void {
+  hoveredNodeId.value = event.node.id
+}
+
+function onNodeMouseLeave(event: NodeMouseEvent): void {
+  if (hoveredNodeId.value === event.node.id) {
+    hoveredNodeId.value = null
+  }
+}
+
 function onNodeClick(event: NodeMouseEvent): void {
   // 大图：点击节点即展开它的全部直接关系（入边 + 出边），同时选中；
   // 与已展开节点无直接关联时说明换到了另一条关系链，旧展开与旧高亮一并收起
@@ -734,7 +753,7 @@ function onPaneClick(): void {
   }
 }
 
-/** 进入/退出聚焦模式：工具栏按钮与 F 键共用，未选中节点且未聚焦时是空操作。 */
+/** 进入/退出聚焦模式：工具栏按钮用，只看选中项与当前聚焦中心。 */
 function toggleFocus(): void {
   if (ui.focusNodeId !== null) {
     ui.exitFocus()
@@ -742,6 +761,29 @@ function toggleFocus(): void {
   }
   if (graph.selectedNodeId !== null) {
     ui.enterFocus(graph.selectedNodeId)
+  }
+}
+
+/**
+ * F 键专用：悬停的可见节点优先于选中项。已聚焦时悬停到其他节点则切换中心；
+ * 悬停同一中心或没有有效悬停时退出，保持原有 F 的切换语义。
+ */
+function handleFocusShortcut(): void {
+  const hovered =
+    hoveredNodeId.value !== null && visibleNodeIds.value.has(hoveredNodeId.value)
+      ? hoveredNodeId.value
+      : null
+  if (ui.focusNodeId !== null) {
+    if (hovered !== null && hovered !== ui.focusNodeId) {
+      void focusNodeInMode(hovered)
+      return
+    }
+    ui.exitFocus()
+    return
+  }
+  const target = hovered ?? graph.selectedNodeId
+  if (target !== null) {
+    void focusNodeInMode(target)
   }
 }
 
@@ -865,6 +907,7 @@ defineExpose({
   openCreateDialog,
   openTypeManager: () => (typeManagerOpen.value = true),
   toggleFocus,
+  handleFocusShortcut,
 })
 </script>
 
@@ -884,6 +927,8 @@ defineExpose({
       class="graph-canvas__flow"
       @connect="onConnect"
       @node-click="onNodeClick"
+      @node-mouse-enter="onNodeMouseEnter"
+      @node-mouse-leave="onNodeMouseLeave"
       @edge-click="onEdgeClick"
       @pane-click="onPaneClick"
       @node-drag-start="onNodeDragStart"

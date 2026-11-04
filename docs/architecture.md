@@ -296,12 +296,15 @@ missing endpoint), so a selection hidden by a type filter dims nothing.
 Focus Mode narrows the canvas to one centre node and its direct neighbours. The centre lives in
 the `ui` store as session state, separate from the selection: selecting another node or clicking
 empty canvas changes the highlight but not the centre. It is entered with `F` or the toolbar's
-聚焦选中节点 button (both are no-ops when no node is selected) and left with `F`, `Esc`, the same
-button, or the canvas banner. Events that invalidate the graph also clear it — deleting the
+聚焦选中节点 button (the button is a no-op when no node is selected) and left with `F`, `Esc`,
+the same button, or the canvas banner. Events that invalidate the graph also clear it — deleting the
 centre, switching worlds, or reloading the graph exits Focus Mode, and undoing a delete does not
 bring it back. While focused, nodes are intersected with the active type filters, only relations
 whose two endpoints are visible are drawn, and the canvas refits on entry and exit through
 `useGraphViewport.fitAll` (waiting for `nodesInitialized` when new nodes have no size yet).
+
+`F` 键除选中节点外还接受指针悬停的可见节点：悬停目标优先，无有效悬停时回退到选中节点；已聚焦时
+悬停其他可见节点会切换聚焦中心，悬停当前中心或没有悬停则退出。工具栏按钮仍只使用选中节点。
 
 Edge labels show the optional per-relation label, never the relation type. They sit on a
 rounded, padded background and are hidden while the viewport zoom is below 0.6

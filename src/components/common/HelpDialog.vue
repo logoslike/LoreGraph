@@ -15,7 +15,7 @@ interface ShortcutRow {
 
 const SHORTCUTS: ShortcutRow[] = [
   { keys: 'N', description: '在当前世界新建节点' },
-  { keys: 'F', description: '聚焦选中的节点，或在聚焦时退出' },
+  { keys: 'F', description: '聚焦悬停或选中的节点；聚焦时切换中心或退出' },
   { keys: 'Delete', description: '删除选中的节点或关系（可在通知中撤销）' },
   { keys: 'Esc', description: '取消选中，或关闭当前对话框' },
   { keys: 'Ctrl / ⌘ + K', description: '聚焦侧边栏搜索框' },
