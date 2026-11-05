@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Trash } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ChevronRight, Trash } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import TypeSelect from './TypeSelect.vue'
 import PropertyRows from './PropertyRows.vue'
@@ -21,6 +21,8 @@ const toast = useToast()
 const name = ref(props.node.name)
 const description = ref(props.node.description)
 const nameError = ref(false)
+/** 所属关系保持默认展开；折叠只隐藏列表，不影响选边。 */
+const relationsExpanded = ref(true)
 
 /** 仅在切换节点时同步草稿，避免自动保存回写覆盖正在输入的光标。 */
 watch(
@@ -157,27 +159,43 @@ async function onDelete(): Promise<void> {
     <PropertyRows :model-value="node.properties" @update:model-value="onPropertiesChange" />
 
     <section>
-      <h4 class="mb-1 text-sm text-muted">所属关系（{{ incidentRows.length }}）</h4>
-      <ul v-if="incidentRows.length > 0" class="space-y-1">
-        <li v-for="row in incidentRows" :key="row.id">
-          <button
-            type="button"
-            class="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-fg hover:bg-surface-2"
-            data-testid="incident-edge-row"
-            @click="selectEdge(row.id)"
-          >
-            <component
-              :is="row.direction === 'out' ? ArrowRight : ArrowLeft"
-              :size="13"
-              class="shrink-0 text-muted"
-            />
-            <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: row.color }" />
-            <span class="shrink-0 text-muted">{{ row.relationLabel }}</span>
-            <span class="truncate">{{ row.otherName }}</span>
-          </button>
-        </li>
-      </ul>
-      <p v-else class="text-xs text-muted">该节点还没有关系</p>
+      <button
+        type="button"
+        class="mb-1 flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-sm text-muted hover:bg-surface-2 hover:text-fg"
+        :aria-expanded="relationsExpanded"
+        :aria-label="relationsExpanded ? '收起所属关系' : '展开所属关系'"
+        data-testid="toggle-incident-relations"
+        @click="relationsExpanded = !relationsExpanded"
+      >
+        <ChevronRight
+          :size="12"
+          class="shrink-0 transition-transform"
+          :class="relationsExpanded ? 'rotate-90' : ''"
+        />
+        <span>所属关系（{{ incidentRows.length }}）</span>
+      </button>
+      <div v-if="relationsExpanded" data-testid="incident-relations-content">
+        <ul v-if="incidentRows.length > 0" class="space-y-1">
+          <li v-for="row in incidentRows" :key="row.id">
+            <button
+              type="button"
+              class="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-fg hover:bg-surface-2"
+              data-testid="incident-edge-row"
+              @click="selectEdge(row.id)"
+            >
+              <component
+                :is="row.direction === 'out' ? ArrowRight : ArrowLeft"
+                :size="13"
+                class="shrink-0 text-muted"
+              />
+              <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: row.color }" />
+              <span class="shrink-0 text-muted">{{ row.relationLabel }}</span>
+              <span class="truncate">{{ row.otherName }}</span>
+            </button>
+          </li>
+        </ul>
+        <p v-else class="text-xs text-muted">该节点还没有关系</p>
+      </div>
     </section>
 
     <BaseButton

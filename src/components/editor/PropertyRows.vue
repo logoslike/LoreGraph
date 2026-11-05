@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Plus, X } from '@lucide/vue'
+import { ChevronRight, Plus, X } from '@lucide/vue'
 import type { PropertyValue } from '@/services/types'
 
 const props = defineProps<{
@@ -54,6 +54,8 @@ function toRecord(rows: PropertyRow[]): Record<string, PropertyValue> {
 }
 
 const rows = ref<PropertyRow[]>(initialRows(props.modelValue))
+/** 自定义属性默认收起；折叠只隐藏内容，rows 状态与添加能力在展开后保持。 */
+const expanded = ref(false)
 
 function commit(): void {
   emit('update:modelValue', toRecord(rows.value))
@@ -82,52 +84,68 @@ function removeRow(index: number): void {
 
 <template>
   <div class="block">
-    <span class="mb-1 block text-sm text-muted">自定义属性</span>
-    <div v-if="rows.length > 0" class="space-y-1.5">
-      <div
-        v-for="(row, index) in rows"
-        :key="index"
-        class="flex items-start gap-1.5"
-        data-testid="property-row"
-      >
-        <input
-          :value="row.key"
-          type="text"
-          placeholder="属性名"
-          aria-label="属性名"
-          data-testid="property-key-input"
-          class="w-1/3 rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          @input="onKeyInput(row, $event)"
-        />
-        <input
-          :value="row.value"
-          type="text"
-          placeholder="属性值"
-          aria-label="属性值"
-          data-testid="property-value-input"
-          class="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          @input="onValueInput(row, $event)"
-        />
-        <button
-          type="button"
-          class="rounded p-1 text-muted hover:bg-surface-2 hover:text-danger"
-          title="删除属性"
-          aria-label="删除属性"
-          @click="removeRow(index)"
-        >
-          <X :size="14" />
-        </button>
-      </div>
-    </div>
-    <p v-else class="text-xs text-muted">暂无自定义属性</p>
     <button
       type="button"
-      class="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-      data-testid="add-property-btn"
-      @click="addRow"
+      class="mb-1 flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-sm text-muted hover:bg-surface-2 hover:text-fg"
+      :aria-expanded="expanded"
+      :aria-label="expanded ? '收起自定义属性' : '展开自定义属性'"
+      data-testid="toggle-properties"
+      @click="expanded = !expanded"
     >
-      <Plus :size="14" />
-      添加属性
+      <ChevronRight
+        :size="12"
+        class="shrink-0 transition-transform"
+        :class="expanded ? 'rotate-90' : ''"
+      />
+      <span>自定义属性</span>
     </button>
+    <div v-if="expanded" data-testid="property-content">
+      <div v-if="rows.length > 0" class="space-y-1.5">
+        <div
+          v-for="(row, index) in rows"
+          :key="index"
+          class="flex items-start gap-1.5"
+          data-testid="property-row"
+        >
+          <input
+            :value="row.key"
+            type="text"
+            placeholder="属性名"
+            aria-label="属性名"
+            data-testid="property-key-input"
+            class="w-1/3 rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @input="onKeyInput(row, $event)"
+          />
+          <input
+            :value="row.value"
+            type="text"
+            placeholder="属性值"
+            aria-label="属性值"
+            data-testid="property-value-input"
+            class="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @input="onValueInput(row, $event)"
+          />
+          <button
+            type="button"
+            class="rounded p-1 text-muted hover:bg-surface-2 hover:text-danger"
+            title="删除属性"
+            aria-label="删除属性"
+            @click="removeRow(index)"
+          >
+            <X :size="14" />
+          </button>
+        </div>
+      </div>
+      <p v-else class="text-xs text-muted">暂无自定义属性</p>
+      <button
+        type="button"
+        class="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+        data-testid="add-property-btn"
+        @click="addRow"
+      >
+        <Plus :size="14" />
+        添加属性
+      </button>
+    </div>
   </div>
 </template>

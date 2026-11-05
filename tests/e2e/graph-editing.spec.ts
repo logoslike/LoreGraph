@@ -237,4 +237,50 @@ test.describe('LG-008 属性面板', () => {
     // 属性经自动保存进入节点数据
     await waitForPersistedNode(page, (node) => node.properties['纪元'] === '第三纪')
   })
+
+  test('自定义属性默认收起，展开后可编辑并在收起再展开后保留', async ({ page }) => {
+    await emptyWorkspace(page)
+    await createNodeViaToolbar(page, '潮汐之母')
+
+    const toggle = page.getByTestId('toggle-properties')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(toggle).toHaveAttribute('aria-label', '展开自定义属性')
+    await expect(page.getByTestId('property-content')).toHaveCount(0)
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(toggle).toHaveAttribute('aria-label', '收起自定义属性')
+    await addProperty(page, '纪元', '第三纪')
+    await expect(page.getByTestId('property-row')).toHaveCount(1)
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('property-content')).toHaveCount(0)
+
+    await toggle.click()
+    await expect(page.getByTestId('property-key-input')).toHaveValue('纪元')
+    await expect(page.getByTestId('property-value-input')).toHaveValue('第三纪')
+    await waitForPersistedNode(page, (node) => node.properties['纪元'] === '第三纪')
+  })
+
+  test('所属关系默认展开，收起只隐藏列表且展开后仍可选边', async ({ page }) => {
+    await buildConnectedNodes(page)
+    await page.getByTestId('lore-node').filter({ hasText: '澜舟' }).click()
+
+    const toggle = page.getByTestId('toggle-incident-relations')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(toggle).toHaveAttribute('aria-label', '收起所属关系')
+    await expect(toggle).toContainText('所属关系（1）')
+    await expect(page.getByTestId('incident-edge-row')).toHaveCount(1)
+
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(toggle).toHaveAttribute('aria-label', '展开所属关系')
+    await expect(page.getByTestId('incident-edge-row')).toHaveCount(0)
+
+    await toggle.click()
+    await expect(page.getByTestId('incident-edge-row')).toHaveCount(1)
+    await page.getByTestId('incident-edge-row').click()
+    await expect(page.getByTestId('edge-editor')).toBeVisible()
+  })
 })

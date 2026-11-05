@@ -47,6 +47,8 @@ test.describe('LG-010 刷新持久化', () => {
 
     await page.getByTestId('node-list-item').filter({ hasText: '潮生灯·记' }).click()
     await expect(page.getByTestId('inspector-name')).toHaveValue('潮生灯·记')
+    await expect(page.getByTestId('toggle-properties')).toHaveAttribute('aria-expanded', 'false')
+    await page.getByTestId('toggle-properties').click()
     await expect(page.getByTestId('property-key-input')).toHaveValue('年份')
     await expect(page.getByTestId('property-value-input')).toHaveValue('第三纪')
   })

@@ -174,8 +174,12 @@ export async function connectNodes(
   await expect(page.getByTestId('relation-type-select')).toBeVisible()
 }
 
-/** 在 Inspector 的属性区新增一条自定义属性。 */
+/** 在 Inspector 的属性区新增一条自定义属性（默认收起时先展开）。 */
 export async function addProperty(page: Page, key: string, value: string): Promise<void> {
+  const toggle = page.getByTestId('toggle-properties')
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click()
+  }
   await page.getByTestId('add-property-btn').click()
   await page.getByTestId('property-key-input').last().fill(key)
   await page.getByTestId('property-value-input').last().fill(value)
