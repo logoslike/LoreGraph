@@ -37,6 +37,54 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+describe('useShortcuts Ctrl+Z 撤销拖动', () => {
+  it.each([
+    ['Ctrl', { ctrlKey: true }],
+    ['Meta', { metaKey: true }],
+  ])('%s+Z 触发撤销并阻止浏览器默认行为', (_name, init) => {
+    const onUndoMove = vi.fn()
+    mountShortcuts({ onUndoMove })
+
+    const event = press('z', init)
+
+    expect(onUndoMove).toHaveBeenCalledTimes(1)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('Shift+Ctrl+Z 是重做，不触发拖动撤销', () => {
+    const onUndoMove = vi.fn()
+    mountShortcuts({ onUndoMove })
+
+    press('z', { ctrlKey: true, shiftKey: true })
+
+    expect(onUndoMove).not.toHaveBeenCalled()
+  })
+
+  it.each(['input', 'textarea'])('在 %s 中按 Ctrl+Z 保留浏览器原生撤销', (tag) => {
+    const onUndoMove = vi.fn()
+    mountShortcuts({ onUndoMove })
+    const field = document.createElement(tag)
+    document.body.append(field)
+
+    const event = press('z', { ctrlKey: true }, field)
+
+    expect(onUndoMove).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('对话框打开时不触发拖动撤销', () => {
+    const onUndoMove = vi.fn()
+    mountShortcuts({ onUndoMove })
+    const dialog = document.createElement('dialog')
+    dialog.setAttribute('open', '')
+    document.body.append(dialog)
+
+    press('z', { ctrlKey: true })
+
+    expect(onUndoMove).not.toHaveBeenCalled()
+  })
+})
+
 describe('useShortcuts F 键聚焦', () => {
   it('无悬停时在画布上按 F 触发聚焦处理并阻止默认行为', () => {
     const onToggleFocus = vi.fn()

@@ -121,6 +121,13 @@ useShortcuts({
   onFocusSearch: () => {
     shellRef.value?.focusSearch()
   },
+  onUndoMove: () => {
+    // 拖动中不撤销：拖拽终点回写 store 时会覆盖刚恢复的坐标
+    if (!ready.value || graphCanvasRef.value?.isNodeDragging() === true) {
+      return
+    }
+    void graph.undoMove()
+  },
   onToggleHelp: () => {
     if (ready.value) {
       ui.helpOpen = !ui.helpOpen

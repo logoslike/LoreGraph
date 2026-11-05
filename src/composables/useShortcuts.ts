@@ -17,6 +17,8 @@ export interface ShortcutHandlers {
   onToggleFocus?: () => void
   /** Ctrl/Cmd+K：聚焦搜索框。 */
   onFocusSearch?: () => void
+  /** Ctrl/Cmd+Z：撤销最近一次节点拖动。 */
+  onUndoMove?: () => void
   /** ?：打开快捷键帮助。 */
   onToggleHelp?: () => void
 }
@@ -68,10 +70,20 @@ export function useShortcuts(handlers: ShortcutHandlers): () => void {
       return
     }
 
-    // 输入中或对话框打开时不再响应无修饰键快捷键
+    // 输入中或对话框打开时不再响应快捷键；Ctrl+Z 在输入框内保留浏览器原生撤销
     if (isEditableTarget(event.target) || hasOpenDialog()) {
       return
     }
+
+    // Ctrl/Cmd+Z：撤销最近一次节点拖动（Shift+Z 是重做，不处理）
+    if (modifier && !event.altKey && !event.shiftKey && key.toLowerCase() === 'z') {
+      if (handlers.onUndoMove) {
+        event.preventDefault()
+        handlers.onUndoMove()
+      }
+      return
+    }
+
     if (modifier || event.altKey) {
       return
     }

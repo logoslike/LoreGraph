@@ -46,6 +46,54 @@ test.describe('LG-007 图谱交互（拖动 / 缩放 / 选择）', () => {
     expect(reloadedPosition).toEqual(draggedPosition)
   })
 
+  test('Ctrl+Z 撤销拖动：渲染与落库坐标都回到拖动前', async ({ page }) => {
+    await twoNodeWorld(page)
+
+    const node = page.getByTestId('lore-node').filter({ hasText: '澜舟' })
+    const initialPosition = await waitForStoredNodePosition(page, '澜舟')
+    const beforeBox = await node.boundingBox()
+    if (beforeBox === null) {
+      throw new Error('拖动前找不到节点「澜舟」')
+    }
+
+    await dragNodeBy(page, '澜舟', -120, -80)
+    await expect
+      .poll(
+        async () => {
+          const stored = await findStoredNode(page, '澜舟')
+          return stored?.position ?? initialPosition
+        },
+        { message: '等待拖动后的节点坐标写入 IndexedDB 超时' },
+      )
+      .not.toEqual(initialPosition)
+
+    await page.keyboard.press('Control+z')
+
+    // 撤销立即回写内存并重新落库（自动保存防抖），轮询直到 IndexedDB 恢复原坐标
+    await expect
+      .poll(
+        async () => {
+          const stored = await findStoredNode(page, '澜舟')
+          return stored?.position ?? null
+        },
+        { timeout: 15_000, message: '等待 Ctrl+Z 撤销写入 IndexedDB 超时' },
+      )
+      .toEqual(initialPosition)
+
+    // 画布坐标同样要回来：store 改动经 flowNodes 同步给 Vue Flow
+    await expect
+      .poll(
+        async () => {
+          const box = await node.boundingBox()
+          return box === null
+            ? Number.POSITIVE_INFINITY
+            : Math.abs(box.x - beforeBox.x) + Math.abs(box.y - beforeBox.y)
+        },
+        { message: '等待撤销后的节点回到拖动前位置' },
+      )
+      .toBeLessThanOrEqual(8)
+  })
+
   test('适应视图与滚轮缩放会改变画布视口变换', async ({ page }) => {
     await twoNodeWorld(page)
 

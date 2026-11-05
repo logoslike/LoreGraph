@@ -36,6 +36,8 @@ interface GraphState {
   isLayouting: boolean
   /** 一级布局快照，只存在内存：首次自动布局前保存，恢复、拖动或切换世界时清除。 */
   layoutSnapshot: LayoutSnapshot | null
+  /** 拖动撤销栈，只存在内存：每次落到新坐标记一条，切换世界或布局成功后清空。 */
+  moveHistory: MoveEntry[]
 }
 
 /** 自动布局前的坐标快照。 */
@@ -43,6 +45,15 @@ interface LayoutSnapshot {
   universeId: string
   positions: Record<string, NodePosition>
 }
+
+/** 一次拖动前的节点坐标：撤销时写回这里。 */
+interface MoveEntry {
+  nodeId: string
+  position: NodePosition
+}
+
+/** 拖动撤销栈上限：只保留最近 50 步。 */
+const MOVE_HISTORY_LIMIT = 50
 
 /** 待合并的节点补丁：同一节点的连续修改合并后一次落库。 */
 const pendingPatches = new Map<string, NodePatch>()
@@ -124,6 +135,7 @@ export const useGraphStore = defineStore('graph', {
     error: null,
     isLayouting: false,
     layoutSnapshot: null,
+    moveHistory: [],
   }),
   getters: {
     selectedNode(state): LoreNode | null {
@@ -158,6 +170,8 @@ export const useGraphStore = defineStore('graph', {
       this.universeId = universeId
       this.loading = true
       this.error = null
+      // 撤销栈按世界隔离：换世界后旧坐标不再有意义
+      this.moveHistory = []
       try {
         const [nodes, edges] = await Promise.all([
           services.graph.listNodes(universeId),
@@ -188,6 +202,7 @@ export const useGraphStore = defineStore('graph', {
       this.error = null
       this.isLayouting = false
       this.layoutSnapshot = null
+      this.moveHistory = []
       useUiStore().exitFocus()
       pendingPatches.clear()
       rollbackNodes.clear()
@@ -234,12 +249,42 @@ export const useGraphStore = defineStore('graph', {
       services.autosave.schedule(`node:${id}`, () => trackSave(save()))
     },
     async moveNode(id: string, position: NodePosition): Promise<void> {
-      if (!this.nodes.some((node) => node.id === id)) {
+      const node = this.nodes.find((item) => item.id === id)
+      if (!node) {
         return
       }
       // 用户手动排布即视为放弃自动布局前的快照，撤销提示不能再把布局改回去
       this.layoutSnapshot = null
+      // 落点与当前坐标相同（吸附回原位、空拖动）时不算一步，避免 Ctrl+Z 空转
+      if (node.position.x !== position.x || node.position.y !== position.y) {
+        this.moveHistory.push({ nodeId: id, position: { ...node.position } })
+        if (this.moveHistory.length > MOVE_HISTORY_LIMIT) {
+          this.moveHistory.shift()
+        }
+      }
       await this.updateNode(id, { position })
+    },
+    /**
+     * 撤销最近一次拖动：逐条弹栈，已删除的节点直接跳过。
+     * 拖动或布局进行中不接受撤销，避免撤回的坐标被进行中的操作覆盖。
+     */
+    async undoMove(): Promise<boolean> {
+      if (this.isLayouting) {
+        return false
+      }
+      while (this.moveHistory.length > 0) {
+        const entry = this.moveHistory.pop()
+        if (!entry) {
+          break
+        }
+        if (!this.nodes.some((node) => node.id === entry.nodeId)) {
+          continue
+        }
+        // 直接走 updateNode：撤销本身不再入栈
+        await this.updateNode(entry.nodeId, { position: { ...entry.position } })
+        return true
+      }
+      return false
     },
     /**
      * 自动布局：计算 → 首次布局前存快照 → 一次性更新内存 → 单事务落库。
@@ -282,6 +327,8 @@ export const useGraphStore = defineStore('graph', {
         if (!this.layoutSnapshot) {
           this.layoutSnapshot = { universeId, positions: beforeLayout }
         }
+        // 布局已改写全部坐标，旧的拖动撤销记录会让 Ctrl+Z 把布局撤成半旧半新
+        this.moveHistory = []
       } finally {
         this.isLayouting = false
       }
@@ -316,6 +363,8 @@ export const useGraphStore = defineStore('graph', {
           throw error
         }
         this.layoutSnapshot = null
+        // 恢复布局同样改写全部坐标，拖动撤销记录随之失效
+        this.moveHistory = []
       } finally {
         this.isLayouting = false
       }

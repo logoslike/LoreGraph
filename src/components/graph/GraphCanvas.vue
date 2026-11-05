@@ -908,6 +908,8 @@ defineExpose({
   openTypeManager: () => (typeManagerOpen.value = true),
   toggleFocus,
   handleFocusShortcut,
+  /** 拖动进行中由父组件屏蔽 Ctrl+Z：落点回写前撤销会被随后的 moveNode 覆盖。 */
+  isNodeDragging: () => draggingNodeId.value !== null,
 })
 </script>
 
