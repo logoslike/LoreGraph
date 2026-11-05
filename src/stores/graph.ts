@@ -28,6 +28,8 @@ interface GraphState {
   edges: LoreEdge[]
   selectedNodeId: string | null
   selectedEdgeId: string | null
+  /** 从某节点的「所属关系」进入关系详情时记录来源节点，供检查器返回。 */
+  edgeOriginNodeId: string | null
   loading: boolean
   error: string | null
   /** 布局计算与落库进行中，用于禁用按钮、阻止重复触发。 */
@@ -117,6 +119,7 @@ export const useGraphStore = defineStore('graph', {
     edges: [],
     selectedNodeId: null,
     selectedEdgeId: null,
+    edgeOriginNodeId: null,
     loading: false,
     error: null,
     isLayouting: false,
@@ -164,6 +167,7 @@ export const useGraphStore = defineStore('graph', {
         this.edges = edges
         this.selectedNodeId = null
         this.selectedEdgeId = null
+        this.edgeOriginNodeId = null
         this.layoutSnapshot = null
         // 重新加载后聚焦中心可能已不存在，直接退出聚焦
         useUiStore().exitFocus()
@@ -179,6 +183,7 @@ export const useGraphStore = defineStore('graph', {
       this.edges = []
       this.selectedNodeId = null
       this.selectedEdgeId = null
+      this.edgeOriginNodeId = null
       this.loading = false
       this.error = null
       this.isLayouting = false
@@ -325,6 +330,10 @@ export const useGraphStore = defineStore('graph', {
       }
       if (this.selectedEdgeId && removedEdgeIds.has(this.selectedEdgeId)) {
         this.selectedEdgeId = null
+        this.edgeOriginNodeId = null
+      }
+      if (this.edgeOriginNodeId === id) {
+        this.edgeOriginNodeId = null
       }
       const ui = useUiStore()
       // 聚焦中心被删除时自动退出聚焦；撤销恢复节点后不再自动回到聚焦
@@ -359,6 +368,7 @@ export const useGraphStore = defineStore('graph', {
       this.edges = this.edges.filter((item) => item.id !== id)
       if (this.selectedEdgeId === id) {
         this.selectedEdgeId = null
+        this.edgeOriginNodeId = null
       }
       const ui = useUiStore()
       ui.notify('已删除关系', {
@@ -375,10 +385,16 @@ export const useGraphStore = defineStore('graph', {
       this.selectedNodeId = id
       if (id !== null) {
         this.selectedEdgeId = null
+        this.edgeOriginNodeId = null
       }
     },
-    selectEdge(id: string | null): void {
+    /**
+     * 选中关系。`originNodeId` 只由节点检查器的「所属关系」传入，
+     * 记录返回来源；画布点边等直接选中一律不传，避免错误地回到不相关节点。
+     */
+    selectEdge(id: string | null, originNodeId: string | null = null): void {
       this.selectedEdgeId = id
+      this.edgeOriginNodeId = id === null ? null : originNodeId
       if (id !== null) {
         this.selectedNodeId = null
       }

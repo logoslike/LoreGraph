@@ -202,6 +202,26 @@ test.describe('LG-006 创建关系', () => {
     await expect(page.getByTestId('relation-type-select')).toBeHidden()
     await expect(page.locator('.vue-flow__edge')).toHaveCount(0)
   })
+
+  test('从节点所属关系进入关系详情后可返回来源节点', async ({ page }) => {
+    await buildConnectedNodes(page)
+
+    await page.getByTestId('lore-node').filter({ hasText: '澜舟' }).click()
+    await expect(page.getByTestId('inspector-name')).toHaveValue('澜舟')
+    await expect(page.getByTestId('inspector-back-to-node')).toHaveCount(0)
+
+    await page.getByTestId('incident-edge-row').click()
+    await expect(page.getByTestId('edge-editor')).toBeVisible()
+    const back = page.getByTestId('inspector-back-to-node')
+    await expect(back).toBeVisible()
+    await expect(back).toHaveAttribute('title', '返回节点检查器')
+    await expect(back).toHaveAttribute('aria-label', '返回节点检查器')
+
+    await back.click()
+    await expect(page.getByTestId('node-editor')).toBeVisible()
+    await expect(page.getByTestId('inspector-name')).toHaveValue('澜舟')
+    await expect(page.getByTestId('inspector-back-to-node')).toHaveCount(0)
+  })
 })
 
 test.describe('LG-008 属性面板', () => {

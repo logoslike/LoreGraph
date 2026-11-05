@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Download, PanelRightClose, Upload } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { ArrowLeft, Download, PanelRightClose, Upload } from '@lucide/vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue'
 import EdgeEditor from '@/components/editor/EdgeEditor.vue'
@@ -133,6 +133,21 @@ function onImportClose(): void {
   importOpen.value = false
   importPreview.value = null
 }
+
+/** 从节点「所属关系」进入关系详情后，可返回来源节点；直接选边时始终为 false。 */
+const canReturnToOrigin = computed(
+  () =>
+    graph.selectedEdgeId !== null &&
+    graph.edgeOriginNodeId !== null &&
+    graph.nodeById(graph.edgeOriginNodeId) !== null,
+)
+
+function onBackToOrigin(): void {
+  const nodeId = graph.edgeOriginNodeId
+  if (nodeId !== null) {
+    graph.selectNode(nodeId)
+  }
+}
 </script>
 
 <template>
@@ -142,16 +157,29 @@ function onImportClose(): void {
   >
     <header class="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
       <h2 class="text-sm font-semibold">检查器</h2>
-      <button
-        type="button"
-        class="rounded p-1 text-muted hover:bg-surface-2 hover:text-fg"
-        title="收起检查器"
-        aria-label="收起检查器"
-        data-testid="collapse-inspector"
-        @click="ui.toggleInspector()"
-      >
-        <PanelRightClose :size="16" />
-      </button>
+      <div class="flex items-center gap-1">
+        <button
+          v-if="canReturnToOrigin"
+          type="button"
+          class="rounded p-1 text-muted hover:bg-surface-2 hover:text-fg"
+          title="返回节点检查器"
+          aria-label="返回节点检查器"
+          data-testid="inspector-back-to-node"
+          @click="onBackToOrigin"
+        >
+          <ArrowLeft :size="16" />
+        </button>
+        <button
+          type="button"
+          class="rounded p-1 text-muted hover:bg-surface-2 hover:text-fg"
+          title="收起检查器"
+          aria-label="收起检查器"
+          data-testid="collapse-inspector"
+          @click="ui.toggleInspector()"
+        >
+          <PanelRightClose :size="16" />
+        </button>
+      </div>
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">

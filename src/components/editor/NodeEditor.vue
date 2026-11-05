@@ -98,7 +98,7 @@ function onPropertiesChange(value: Record<string, PropertyValue>): void {
 }
 
 function selectEdge(id: string): void {
-  graph.selectEdge(id)
+  graph.selectEdge(id, props.node.id)
 }
 
 async function onDelete(): Promise<void> {
@@ -163,6 +163,7 @@ async function onDelete(): Promise<void> {
           <button
             type="button"
             class="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-fg hover:bg-surface-2"
+            data-testid="incident-edge-row"
             @click="selectEdge(row.id)"
           >
             <component
