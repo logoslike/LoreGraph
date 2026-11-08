@@ -40,6 +40,7 @@ import { assignEdgeLanes, choosePorts, orderEdgesForVisualPriority, type Rect } 
 import { EDGE_OBSTACLES, nodeRectOf, sameRect, type NodeRects } from './edge-obstacles'
 import type { LoreEdgeData, LoreNodeData } from './types'
 import GraphSearchPanel from './GraphSearchPanel.vue'
+import OffscreenIndicators from './OffscreenIndicators.vue'
 import { useGraphViewport } from '@/composables/useGraphViewport'
 import { useNodeCollapse } from '@/composables/useNodeCollapse'
 import { useNodeExpansion } from '@/composables/useNodeExpansion'
@@ -427,13 +428,20 @@ function stopPendingFit(): void {
 }
 
 /**
+ * 视口任务序号：自动适应视图与聚焦居中互斥。后发起的任务作废先前尚未执行的等待，
+ * 聚焦快速切换、显式定位与自动 fit 不会在同一帧里互相抢视口。
+ */
+let viewportTaskId = 0
+
+/**
  * 新节点还没量出尺寸时 fitView 会漏算它们：先等一拍让 Vue Flow 收下新节点（此时尺寸还是 0），
  * 再等 nodesInitialized 变回 true 才适应视图。
  */
 function fitAllWhenNodesReady(): void {
   stopPendingFit()
+  const task = ++viewportTaskId
   void nextTick(() => {
-    if (graph.nodes.length === 0) {
+    if (task !== viewportTaskId || graph.nodes.length === 0) {
       return
     }
     if (nodesInitialized.value) {
@@ -441,7 +449,7 @@ function fitAllWhenNodesReady(): void {
       return
     }
     pendingFitStop = watch(nodesInitialized, (ready) => {
-      if (!ready) {
+      if (!ready || task !== viewportTaskId) {
         return
       }
       stopPendingFit()
@@ -544,14 +552,45 @@ async function waitForNodeMeasured(nodeId: string, maxFrames = 30): Promise<bool
 
 /**
  * 把指定节点定位到视口中心（供侧栏点击节点等画布外入口调用）。
- * 节点可能刚被类型筛选放出来，先等它被挂载并量到尺寸，再做单节点 fitView。
+ * 节点可能刚被类型筛选放出来，先等它被挂载并量到尺寸，再做单节点 fitView；
+ * 显式定位优先于聚焦，先作废聚焦与适应视图尚未执行的等待，否则退出聚焦触发的
+ * fitAll 会和这里的单节点 fitView 抢同一段动画。
  */
 async function focusNode(nodeId: string): Promise<boolean> {
+  const task = ++viewportTaskId
+  stopPendingFit()
   await nextTick()
+  if (task !== viewportTaskId) {
+    return false
+  }
   if (!(await waitForNodeMeasured(nodeId))) {
     return false
   }
+  if (task !== viewportTaskId) {
+    return false
+  }
   return await viewport.fitNode(nodeId)
+}
+
+/**
+ * 大图聚焦：保留用户当前缩放，只把聚焦中心移到视口中心。
+ * 邻域里的远点因此不会把视口拉远（那正是 fitAll 的行为）；小图与退出聚焦仍走 fitAll。
+ * 快速切换焦点时旧任务作废；节点还没量到尺寸就放弃居中，避免按 0 尺寸算错位置。
+ */
+async function centerOnFocusNode(nodeId: string): Promise<void> {
+  const task = ++viewportTaskId
+  stopPendingFit()
+  await nextTick()
+  if (task !== viewportTaskId || ui.focusNodeId !== nodeId) {
+    return
+  }
+  if (!(await waitForNodeMeasured(nodeId))) {
+    return
+  }
+  if (task !== viewportTaskId || ui.focusNodeId !== nodeId) {
+    return
+  }
+  await viewport.centerOnNode(nodeId)
 }
 
 /**
@@ -893,10 +932,19 @@ watch(
   () => autoFit(),
 )
 
-/** 进入或退出聚焦后可见节点变化，重新适应视图。 */
+/**
+ * 聚焦切换后的视口：大图进入/切换只居中聚焦中心并保留当前缩放，
+ * 小图与退出聚焦保持原有「适应全部可见节点」。
+ */
 watch(
   () => ui.focusNodeId,
-  () => fitAllWhenNodesReady(),
+  (focusNodeId) => {
+    if (focusNodeId !== null && bigGraph.value) {
+      void centerOnFocusNode(focusNodeId)
+      return
+    }
+    fitAllWhenNodesReady()
+  },
 )
 
 // 供父组件/E2E 调用
@@ -989,6 +1037,18 @@ defineExpose({
         </div>
       </Panel>
     </VueFlow>
+
+    <!--
+      屏外节点方向标注：仅大图聚焦时显示。这里刻意传 Vue Flow 的原始 ref
+      （flow.nodes / flow.viewport / flow.dimensions 是对象属性，模板不会自动解包），
+      由浮层自己订阅平移缩放；解引用会让整张画布随每帧视口变化重渲染。
+    -->
+    <OffscreenIndicators
+      v-if="bigGraph && ui.focusNodeId !== null"
+      :nodes="flow.nodes"
+      :viewport="flow.viewport"
+      :size="flow.dimensions"
+    />
 
     <!-- 节点查找：与侧栏搜索共用 query，非模态，不铺遮罩 -->
     <GraphSearchPanel

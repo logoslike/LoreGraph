@@ -8,6 +8,12 @@ import {
   useEmptyLibrary,
   waitForViewportIdle,
 } from './helpers'
+import {
+  LARGE_NODE_COUNT,
+  LARGE_WORLD_NAME,
+  buildLargeWorld,
+  largeNodeName,
+} from './large-world-fixture'
 
 /**
  * LG-209 相邻高亮、聚焦模式与边标签优化。
@@ -251,5 +257,113 @@ test.describe('LG-209 边标签', () => {
 
     expect(await readZoom(page)).toBeLessThan(0.6)
     await expect(labels).toHaveCount(0)
+  })
+})
+
+/**
+ * 大图（nodes>=100）聚焦：邻域里的节点常相距很远，fitAll 会把视口拉得很远。
+ * 期望只把聚焦中心移到画布中心、保留用户当前缩放；退出聚焦仍恢复「适应全部」。
+ */
+const FOCUS_TOLERANCE = 16
+
+async function openLargeFocusWorld(page: Page, testInfo: TestInfo): Promise<void> {
+  const file = testInfo.outputPath('large-focus.loregraph.json')
+  await mkdir(dirname(file), { recursive: true })
+  await writeFile(file, JSON.stringify(buildLargeWorld(), null, 2), 'utf8')
+
+  await useEmptyLibrary(page)
+  await gotoUniverses(page)
+  await page.getByTestId('import-json-input').setInputFiles(file)
+  await confirmImportPreview(page)
+
+  const card = page.getByTestId('universe-card').filter({ hasText: LARGE_WORLD_NAME })
+  await expect(card).toHaveCount(1)
+  await card.getByRole('link', { name: '打开' }).click()
+  await expect(page.getByTestId('graph-canvas')).toBeVisible()
+  await expect(page.getByTestId('lore-node')).toHaveCount(LARGE_NODE_COUNT, { timeout: 60_000 })
+  await page.getByTestId('fit-view-btn').click()
+  await waitForViewportIdle(page)
+  await clickBlank(page)
+}
+
+/** 节点中心相对画布中心的最大屏幕偏移；聚焦居中后应接近 0。 */
+async function centerOffset(page: Page, name: string): Promise<number> {
+  const canvas = await page.getByTestId('graph-canvas').boundingBox()
+  const target = await nodeByName(page, name).boundingBox()
+  if (canvas === null || target === null) {
+    return Number.POSITIVE_INFINITY
+  }
+  return Math.max(
+    Math.abs(target.x + target.width / 2 - (canvas.x + canvas.width / 2)),
+    Math.abs(target.y + target.height / 2 - (canvas.y + canvas.height / 2)),
+  )
+}
+
+/** 节点卡片是否完整落在画布可视区内（适应全部后远端节点也应回到画布内）。 */
+async function nodeInsideCanvas(page: Page, name: string): Promise<boolean> {
+  const canvas = await page.getByTestId('graph-canvas').boundingBox()
+  const target = await nodeByName(page, name).boundingBox()
+  if (canvas === null || target === null) {
+    return false
+  }
+  return (
+    target.x >= canvas.x &&
+    target.y >= canvas.y &&
+    target.x + target.width <= canvas.x + canvas.width &&
+    target.y + target.height <= canvas.y + canvas.height
+  )
+}
+
+test.describe('大图聚焦视口', () => {
+  test('大图进入/切换聚焦保留当前缩放并居中聚焦节点，退出聚焦恢复适应全部', async ({
+    page,
+  }, testInfo) => {
+    await openLargeFocusWorld(page, testInfo)
+
+    const zoomBefore = await readZoom(page)
+    // 100 个节点铺开 10×10 网格，初始适应视图必然缩得很小；
+    // 聚焦若仍 fitAll，3 个邻域节点的缩放会明显变大，可作为「没有重新适应视图」的反证
+    expect(zoomBefore).toBeLessThan(0.4)
+
+    await nodeByName(page, largeNodeName(0)).click()
+    await page.keyboard.press('f')
+
+    const banner = page.getByTestId('focus-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText(largeNodeName(0))
+    // 聚焦后只保留 1 跳邻域：自身 + 入边邻居 + 出边邻居
+    await expect(page.getByTestId('lore-node')).toHaveCount(3)
+
+    await expect
+      .poll(async () => await centerOffset(page, largeNodeName(0)), {
+        timeout: 10_000,
+        message: '大图进入聚焦后中心节点没有被居中',
+      })
+      .toBeLessThanOrEqual(FOCUS_TOLERANCE)
+    // 缩放保持：进入聚焦不再 fitAll
+    expect(Math.abs((await readZoom(page)) - zoomBefore)).toBeLessThan(0.02)
+
+    // 悬停邻域内的另一个节点按 F 切换聚焦中心，缩放同样保持
+    await nodeByName(page, largeNodeName(1)).click()
+    await page.keyboard.press('f')
+    await expect(banner).toContainText(largeNodeName(1))
+    await expect
+      .poll(async () => await centerOffset(page, largeNodeName(1)), {
+        timeout: 10_000,
+        message: '切换聚焦中心后新中心节点没有被居中',
+      })
+      .toBeLessThanOrEqual(FOCUS_TOLERANCE)
+    expect(Math.abs((await readZoom(page)) - zoomBefore)).toBeLessThan(0.02)
+
+    // 退出聚焦：恢复全部节点并重新适应视图，远端节点回到画布内
+    await page.keyboard.press('Escape')
+    await expect(banner).toBeHidden()
+    await expect(page.getByTestId('lore-node')).toHaveCount(LARGE_NODE_COUNT)
+    await expect
+      .poll(async () => await nodeInsideCanvas(page, largeNodeName(90)), {
+        timeout: 10_000,
+        message: '退出聚焦后没有恢复适应全部节点',
+      })
+      .toBe(true)
   })
 })
