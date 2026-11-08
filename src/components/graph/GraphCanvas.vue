@@ -593,6 +593,28 @@ async function centerOnFocusNode(nodeId: string): Promise<void> {
   await viewport.centerOnNode(nodeId)
 }
 
+async function locateOffscreenNode(nodeId: string): Promise<void> {
+  if (ui.focusNodeId === null || !graph.nodeById(nodeId)) {
+    return
+  }
+  const task = ++viewportTaskId
+  const focusCenterId = ui.focusNodeId
+  const zoom = flow.viewport.value.zoom
+  stopPendingFit()
+  graph.selectNode(nodeId)
+  await nextTick()
+  if (task !== viewportTaskId || ui.focusNodeId !== focusCenterId) {
+    return
+  }
+  if (!(await waitForNodeMeasured(nodeId))) {
+    return
+  }
+  if (task !== viewportTaskId || ui.focusNodeId !== focusCenterId) {
+    return
+  }
+  await viewport.centerOnNode(nodeId, zoom)
+}
+
 /**
  * 收起/展开一个节点。折叠会隐藏它的后代与相关边；
  * 如果当前选中项或聚焦中心被藏起来，同时清除，避免 Inspector 指向画布上不存在的元素。
@@ -1048,6 +1070,7 @@ defineExpose({
       :nodes="flow.nodes"
       :viewport="flow.viewport"
       :size="flow.dimensions"
+      @locate="locateOffscreenNode"
     />
 
     <!-- 节点查找：与侧栏搜索共用 query，非模态，不铺遮罩 -->

@@ -496,6 +496,66 @@ test.describe('屏外节点方向标注', () => {
   })
 })
 
+test.describe('点击屏外节点标注定位', () => {
+  async function expectIndicatorClickToCenter(
+    page: Page,
+    name: string,
+    clickTarget: '.offscreen-indicator__arrow' | '.offscreen-indicator__name',
+  ): Promise<void> {
+    const indicator = page.getByTestId('offscreen-indicator').filter({ hasText: name })
+    await expect(indicator).toHaveCount(1)
+    await indicator.locator(clickTarget).click()
+    await waitForViewportIdle(page)
+
+    const target = nodeByName(page, name)
+    await expect(target).toHaveAttribute('data-selected', 'true')
+    await expect(page.getByTestId('focus-banner')).toContainText(HUB_NAME)
+    await expect(page.getByTestId('focus-banner')).not.toContainText(name)
+    await expect(
+      page.getByTestId('offscreen-indicator').filter({ hasText: name }),
+    ).toHaveCount(0)
+
+    const canvas = await canvasRect(page)
+    await expect
+      .poll(async () => {
+        const box = await target.boundingBox()
+        if (box === null) {
+          return Number.POSITIVE_INFINITY
+        }
+        const nodeCenterX = box.x + box.width / 2
+        const nodeCenterY = box.y + box.height / 2
+        const canvasCenterX = canvas.x + canvas.width / 2
+        const canvasCenterY = canvas.y + canvas.height / 2
+        return Math.max(Math.abs(nodeCenterX - canvasCenterX), Math.abs(nodeCenterY - canvasCenterY))
+      })
+      .toBeLessThanOrEqual(2)
+  }
+
+  test('点击屏外节点名称后居中并保留聚焦状态与缩放', async ({ page }, testInfo) => {
+    await openWorld(page, testInfo, buildWideWorld(), 'indicator-name-click-world.loregraph.json')
+    await expect(page.getByTestId('lore-node')).toHaveCount(100, { timeout: 60_000 })
+    await resetView(page)
+    await focusNode(page, HUB_NAME)
+    await zoomToMax(page)
+
+    const zoomBefore = await readZoom(page)
+    await expectIndicatorClickToCenter(page, '东邻', '.offscreen-indicator__name')
+    expect(await readZoom(page)).toBeCloseTo(zoomBefore, 2)
+  })
+
+  test('点击屏外节点箭头后居中并保留聚焦状态与缩放', async ({ page }, testInfo) => {
+    await openWorld(page, testInfo, buildWideWorld(), 'indicator-arrow-click-world.loregraph.json')
+    await expect(page.getByTestId('lore-node')).toHaveCount(100, { timeout: 60_000 })
+    await resetView(page)
+    await focusNode(page, HUB_NAME)
+    await zoomToMax(page)
+
+    const zoomBefore = await readZoom(page)
+    await expectIndicatorClickToCenter(page, '西邻', '.offscreen-indicator__arrow')
+    expect(await readZoom(page)).toBeCloseTo(zoomBefore, 2)
+  })
+})
+
 /** 打开世界后等自动适应视图停稳，再显式适应全部并取消选中，保证起始视口确定。 */
 async function resetView(page: Page): Promise<void> {
   await waitForViewportIdle(page)

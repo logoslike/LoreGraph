@@ -78,6 +78,20 @@ describe('OffscreenIndicators', () => {
     expect(pillNodes(wrapper)).toHaveLength(0)
   })
 
+  it('标注按钮可键盘聚焦，名称包含节点方向，点击发出对应节点 id', async () => {
+    const { wrapper } = mountLayer({ x: 0, y: 0, zoom: 1 }, [fakeNode('n-west', '西邻', -300, 268)])
+    const button = wrapper.get('[data-testid="offscreen-indicator"]')
+
+    expect(button.element.tagName).toBe('BUTTON')
+    expect(button.attributes('type')).toBe('button')
+    expect(button.attributes('aria-label')).toBe('将画布移至节点：西邻（左侧）')
+    expect(button.attributes('title')).toBe('将画布移至节点：西邻（左侧）')
+    expect((button.element as HTMLButtonElement).tabIndex).toBe(0)
+
+    await button.trigger('click')
+    expect(wrapper.emitted('locate')).toEqual([['n-west']])
+  })
+
   it('上侧多个标注按胶囊宽度排开，渲染位置不互相压住', () => {
     const { wrapper } = mountLayer({ x: 0, y: 0, zoom: 1 }, [
       fakeNode('n-a', '甲', 300, -200),

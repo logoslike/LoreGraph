@@ -25,6 +25,10 @@ const props = defineProps<{
   size: Ref<CanvasSize>
 }>()
 
+const emit = defineEmits<{
+  locate: [nodeId: string]
+}>()
+
 const indicators = computed(() => {
   const boxes: IndicatorNodeBox[] = props.nodes.value.map((node) => ({
     id: node.id,
@@ -34,7 +38,13 @@ const indicators = computed(() => {
   return computeOffscreenIndicators(boxes, props.viewport.value, props.size.value)
 })
 
-/** 按所在边把胶囊朝画布内侧展开，避免被画布的 overflow: hidden 裁掉。 */
+const SIDE_LABEL: Record<IndicatorSide, string> = {
+  left: '左侧',
+  right: '右侧',
+  top: '上方',
+  bottom: '下方',
+}
+
 const ANCHOR_TRANSFORM: Record<IndicatorSide, string> = {
   left: 'translate(0, -50%)',
   right: 'translate(-100%, -50%)',
@@ -44,30 +54,35 @@ const ANCHOR_TRANSFORM: Record<IndicatorSide, string> = {
 </script>
 
 <template>
-  <!-- 纯标注：不接收指针事件，也不进入读屏顺序（节点本身可从侧栏到达） -->
-  <div class="offscreen-indicators" data-testid="offscreen-indicators" aria-hidden="true">
-    <span
+  <!-- 标注作为跳转控件，可用 Tab 聚焦并由读屏器按节点名称播报 -->
+  <div class="offscreen-indicators" data-testid="offscreen-indicators">
+    <button
       v-for="indicator in indicators"
       :key="indicator.nodeId"
+      type="button"
       class="offscreen-indicator"
       data-testid="offscreen-indicator"
       :data-node-id="indicator.nodeId"
       :data-side="indicator.side"
       :data-angle="Math.round(indicator.angle)"
+      :aria-label="`将画布移至节点：${indicator.name}（${SIDE_LABEL[indicator.side]}）`"
+      :title="`将画布移至节点：${indicator.name}（${SIDE_LABEL[indicator.side]}）`"
       :style="{
         left: `${indicator.x}px`,
         top: `${indicator.y}px`,
         transform: ANCHOR_TRANSFORM[indicator.side],
       }"
+      @click="emit('locate', indicator.nodeId)"
     >
       <span
         class="offscreen-indicator__arrow"
+        aria-hidden="true"
         :style="{ transform: `rotate(${indicator.angle}deg)` }"
       >
         <ArrowRight :size="12" />
       </span>
       <span class="offscreen-indicator__name">{{ indicator.name }}</span>
-    </span>
+    </button>
   </div>
 </template>
 
@@ -94,7 +109,25 @@ const ANCHOR_TRANSFORM: Record<IndicatorSide, string> = {
   font-size: 11px;
   line-height: 1.5;
   white-space: nowrap;
-  box-shadow: 0 1px 6px rgb(0 0 0 / 12%);
+  pointer-events: auto;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.offscreen-indicator:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.offscreen-indicator:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .offscreen-indicator__arrow {
