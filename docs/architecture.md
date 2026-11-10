@@ -108,20 +108,24 @@ indexes:
 Services own the business rules and are constructed with a `Repositories` bundle
 (`createServices(repos)`), which makes them testable with the memory adapter.
 
-| Module                | Responsibility                                                                                                                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `universe.service.ts` | Create/list/update/delete worlds; seeds the 6 default node types and 6 default relation types for a new world; cascade-deletes a world; loads the bundled sample world (`public/examples/emberfall.json`) through the importer. |
-| `graph.service.ts`    | Node and edge CRUD; rejects self-loops and duplicate `(source, target, relationType)` edges; deletes incident edges together with a node inside one transaction; returns snapshots for undo.                                    |
-| `type.service.ts`     | Entity type CRUD; refuses to delete a type that is still referenced and reports the reference count.                                                                                                                            |
-| `import.service.ts`   | Two-phase import: `analyzeImport` parses and validates a `.loregraph.json` file read-only and returns a preview; `commitImport` writes that plan in one transaction, either as a new world or merged into an existing one.      |
-| `export.service.ts`   | Builds a `LoreUniverseFile` for one world, or a `LoreGraphFile` for a node selection (only edges whose two endpoints are selected, and only the types they reference); triggers the browser download.                           |
-| `layout.service.ts`   | Computes automatic layout coordinates with elkjs in `force` (default), `layered`, and `clustered` (grouped by node type) modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.           |
-| `autosave.ts`         | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
-| `search.ts`           | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
-| `collapse.ts`         | Pure helpers for node folding: walks the edge list to find the descendants hidden by a folded node and the hidden count per folded node, and reveals the collapsed ancestors that hide a target node.                           |
-| `neighborhood.ts`     | Pure 1-hop neighbourhood of a selection: the node, its direct neighbours and incident edges, or a relation and its two endpoints. Ignores dangling edges; backs adjacency highlighting and Focus Mode.                          |
-| `errors.ts`           | `LoreGraphError` base class plus `GraphError` and `TypeInUseError`.                                                                                                                                                             |
-| `index.ts`            | Composition root: `services` singleton wired to Dexie (`createDexieRepositories(createLoreDatabase())`).                                                                                                                        |
+| Module                    | Responsibility                                                                                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `universe.service.ts`     | Create/list/update/delete worlds; seeds the 6 default node types and 6 default relation types for a new world; cascade-deletes a world; loads the bundled sample world (`public/examples/emberfall.json`) through the importer. |
+| `graph.service.ts`        | Node and edge CRUD; rejects self-loops and duplicate `(source, target, relationType)` edges; deletes incident edges together with a node inside one transaction; returns snapshots for undo.                                    |
+| `type.service.ts`         | Entity type CRUD; refuses to delete a type that is still referenced and reports the reference count.                                                                                                                            |
+| `import.service.ts`       | Two-phase import: `analyzeImport` parses and validates a `.loregraph.json` file read-only and returns a preview; `commitImport` writes that plan in one transaction, either as a new world or merged into an existing one.      |
+| `export.service.ts`       | Builds a `LoreUniverseFile` for one world, or a `LoreGraphFile` for a node selection (only edges whose two endpoints are selected, and only the types they reference); triggers the browser download.                           |
+| `layout.service.ts`       | Computes automatic layout coordinates with elkjs in `force` (default), `layered`, and `clustered` (grouped by node type) modes. Positions only; it never reads or writes storage, and elkjs is imported on first use.           |
+| `autosave.ts`             | Per-key debounced autosave used by the graph store.                                                                                                                                                                             |
+| `search.ts`               | Pure helpers for name search and type filtering, used by the sidebar node list.                                                                                                                                                 |
+| `collapse.ts`             | Pure helpers for node folding: walks the edge list to find the descendants hidden by a folded node and the hidden count per folded node, and reveals the collapsed ancestors that hide a target node.                           |
+| `neighborhood.ts`         | Pure 1-hop neighbourhood of a selection: the node, its direct neighbours and incident edges, or a relation and its two endpoints. Ignores dangling edges; backs adjacency highlighting and Focus Mode.                          |
+| `expansion.ts`            | Pure rules for the large-graph relation mode: the 100-node / 300-relation threshold, the visible edge set given the expanded nodes, and the relation to reveal when a selected edge is hidden.                                  |
+| `offscreen-indicators.ts` | Pure geometry for the Focus Mode markers: which visible nodes lie completely outside the canvas, which edge each one points along, the arrow angle, and pill placement on that side with a minimum gap.                         |
+| `world-loader.ts`         | Discovers root `worlds/*.json` files, validates each one through the import analyser, commits it as a new world, and records the source `universe.id` set so an import never repeats.                                           |
+| `bundled-worlds.ts`       | Build-time glob of project-root `worlds/*.json` into URL assets, plus the `loregraph.bundledWorlds.disabled` opt-out that tests use to keep the auto-import out of the way.                                                     |
+| `errors.ts`               | `LoreGraphError` base class plus `GraphError` and `TypeInUseError`.                                                                                                                                                             |
+| `index.ts`                | Composition root: `services` singleton wired to Dexie (`createDexieRepositories(createLoreDatabase())`).                                                                                                                        |
 
 Service APIs are declared as interfaces in `src/services/types.ts` so that stores depend on
 contracts rather than implementations.
@@ -135,8 +139,8 @@ need one narrow behaviour.
 - `stores/universe.ts` — world list, the currently selected world, sample-world seeding.
 - `stores/types.ts` — node and relation type definitions of the current world, plus lookup
   getters by key.
-- `stores/graph.ts` — nodes, edges, selection, the optimistic update path for node edits, and the
-  one-level layout snapshot.
+- `stores/graph.ts` — nodes, edges, selection, the optimistic update path for node edits, the
+  one-level layout snapshot, and the drag history behind `Ctrl/⌘+Z` (see [Undo](#undo)).
 - `stores/ui.ts` — theme, panel collapse state, search query, active type filters, toast
   notifications, and the Focus Mode centre. Theme is persisted in `localStorage` under
   `loregraph.theme`; everything else, including the focus centre, is session-only. The first-run
@@ -145,6 +149,10 @@ need one narrow behaviour.
 - `composables/useTheme.ts`, `useToast.ts`, `useShortcuts.ts`, `useGraphViewport.ts` —
   read-only theme access, notification helpers (including the 8-second undo toast), the global
   keyboard shortcuts, and viewport fit/zoom/centre-preservation operations for the canvas.
+- `composables/useNodeExpansion.ts` — the expanded-node set of the canvas on a large graph, per
+  world, persisted in `localStorage` under `loregraph.node-expansion.<universeId>`; it also owns
+  the "click a node expands its direct relations, click an unrelated node starts a new chain"
+  rule and prunes ids that no longer exist. View state only, never persisted to IndexedDB.
 - `composables/useNodeCollapse.ts` — the fold state of the canvas: which nodes are folded, per
   world, persisted in `localStorage` under `loregraph.node-collapse.<universeId>` and sanitised on
   read; folding is view state and never enters the data model or the export files.
@@ -157,8 +165,10 @@ need one narrow behaviour.
 - `/` — universe list: world cards with description, node/edge/type counts and creation date;
   create, edit (name + description), export, import (always as a new world), and cascade-delete
   actions (with confirmation); the import preview lists validation issues before anything is
-  written; theme toggle; loads a built-in Chinese fantasy sample world on first run when the
-  library is empty.
+  written; theme toggle; imports root `worlds/*.json` files before the first-run seeding, each
+  file on its own, and remembers the source `universe.id` in
+  `loregraph.bundledWorlds.imported` so a deleted world does not come back; loads a built-in
+  Chinese fantasy sample world on first run when the library is empty.
 - `/u/:universeId` — workspace: a three-pane shell (sidebar, graph canvas, inspector) under a
   fixed 48 px context header that shows the current world name and view. The sidebar collapses to
   a 56 px rail, holds the world switcher, node search, a collapsible type-filter section with
@@ -170,14 +180,17 @@ need one narrow behaviour.
   switches to on-demand relations: every node card stays, relation lines start hidden, clicking a
   node reveals all of its direct incoming and outgoing relations, clicking a neighbour reveals the
   next layer, and a node chevron toggles its relations), and offers fit-view, zoom, Focus Mode,
-  delete, a global direction-arrow switch, and type-manager actions plus a 更多 menu with all
+  delete, a global direction-arrow switch, off-screen markers while a large graph is focused, and
+  type-manager actions plus a 更多 menu with all
   three layout modes (force, layered, clustered by type), 恢复布局前位置, and graph-snippet
   import/export. Relations between the same pair of nodes are spread onto separate lanes by
   `edge-lanes.ts`, so parallel and mutual relations stay distinguishable. The inspector edits the
-  selected node or edge, lists a node's incident relations, and shows world statistics plus world
-  export/import actions when nothing is selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
+  selected node or edge — custom properties start folded and 所属关系 starts open, each section
+  toggling independently — lists a node's incident relations (opening one records the source node
+  and offers 返回节点检查器), and shows world statistics plus world export/import actions when
+  nothing is selected. Keyboard shortcuts: `N` new node, `F` enter/exit Focus Mode,
   `Delete`/`Backspace` delete selection, `Esc` cancel/close and leave Focus Mode,
-  `Ctrl/⌘+K` focus search, `?` shortcut help.
+  `Ctrl/⌘+Z` undo the last node drag, `Ctrl/⌘+K` focus search, `?` shortcut help.
 - `/:pathMatch(.*)*` — not found page.
 
 Components are grouped as `common/` (primitives, color/icon pickers, confirm, help, and import
@@ -221,10 +234,19 @@ debounced, because they cannot be merged into a partial patch.
 
 ### Undo
 
-v0.1 introduced a deliberately small undo surface; v0.2 added layout restore; v0.3 adds no
-new undoable action — node folding, sidebar collapse, the arrow switch, and the folded-node badge
-are view state, so they are deliberately outside the undo model.
+v0.1 introduced a deliberately small undo surface; v0.2 added layout restore; v0.4 adds drag
+undo. Node folding, the large-graph expansion state, sidebar collapse, the arrow switch, and the
+folded-node badge remain view state, so they are deliberately outside the undo model.
 
+- **Dragging a node** pushes the pre-drag position onto an in-memory history before the store
+  update, capped at 50 entries (`MOVE_HISTORY_LIMIT` in `src/stores/graph.ts`); a drop that does
+  not change the coordinates records nothing. `Ctrl/⌘+Z` pops one entry, skips nodes that have
+  since been deleted, and writes the old position through `updateNode`, so the restore is
+  autosaved like any other edit and never pushes a new entry. The shortcut is ignored while
+  typing, while a dialog is open, during a drag, and while a layout is running. The history is
+  in memory only and is cleared on world load/reset, after an automatic layout, and after
+  恢复布局前位置; the first manual drag also drops the layout snapshot, so restoring the layout
+  cannot undo the arrangement the user just made.
 - **Deleting a node** is atomic in the service: incident edges and the node are removed in one
   transaction, and the service returns a `DeleteNodeSnapshot` with the node and its edges. The
   store shows a toast with an **撤销** action for 8 seconds; restoring re-inserts the node and
@@ -299,12 +321,30 @@ empty canvas changes the highlight but not the centre. It is entered with `F` or
 聚焦选中节点 button (the button is a no-op when no node is selected) and left with `F`, `Esc`,
 the same button, or the canvas banner. Events that invalidate the graph also clear it — deleting the
 centre, switching worlds, or reloading the graph exits Focus Mode, and undoing a delete does not
-bring it back. While focused, nodes are intersected with the active type filters, only relations
-whose two endpoints are visible are drawn, and the canvas refits on entry and exit through
-`useGraphViewport.fitAll` (waiting for `nodesInitialized` when new nodes have no size yet).
+bring it back. While focused, nodes are intersected with the active type filters, and only
+relations whose two endpoints are visible are drawn.
+
+The camera depends on the graph size. On a large graph (100 nodes or 300 relations, see the
+canvas entry above) entering Focus Mode or moving the centre animates `setCenter` to the centre
+node and keeps the current zoom, so a distant neighbour no longer pulls the view out; leaving the
+mode still refits. Small graphs refit on entry and exit through `useGraphViewport.fitAll`
+(waiting for `nodesInitialized` when new nodes have no size yet). If a node has no size after 30
+frames the camera gives up rather than waiting forever.
 
 `F` 键除选中节点外还接受指针悬停的可见节点：悬停目标优先，无有效悬停时回退到选中节点；已聚焦时
 悬停其他可见节点会切换聚焦中心，悬停当前中心或没有悬停则退出。工具栏按钮仍只使用选中节点。
+
+While a large graph is focused, `OffscreenIndicators` draws one pill per visible neighbour whose
+card has no intersection with the canvas — a card that overlaps by even one pixel gets none,
+because the canvas already shows where it is. `src/services/offscreen-indicators.ts` is pure
+geometry: it decides which side each node lies beyond, rotates an arrow by the angle from the
+canvas centre, and distributes pills along that side with a minimum gap; a crowded side falls back
+to even spacing and may overlap. Pills read the Vue Flow `nodes`, `viewport`, and `dimensions`
+refs directly, so panning and zooming refresh them without re-rendering the canvas. They are
+native buttons labelled with the node name and its direction, and activating one selects the node,
+centres it at the zoom captured before the click, and leaves the focus centre — and therefore the
+expansion and the rest of the markers — untouched. Camera tasks are guarded by a task id, so
+clicking another marker discards the pending pan of the previous one.
 
 Edge labels show the optional per-relation label, never the relation type. They sit on a
 rounded, padded background and are hidden while the viewport zoom is below 0.6
@@ -360,6 +400,14 @@ Graph snippets can only be merged. Entry points: the universe library (导入世
 inspector's world overview (export a world; import with a mode selector), and the graph toolbar's
 更多 menu (import or export a graph snippet). After a snippet import the canvas refits the view.
 
+Root `worlds/*.json` files are a fourth entry point, without a preview: the universe view asks
+`world-loader.ts` to import every matching file on start. Each file goes through the same
+`analyzeImport` (`new-universe`) and `commitImport` pair, one at a time, so a bad file is skipped
+without blocking the rest; a successful commit records the source `universe.id` in
+`loregraph.bundledWorlds.imported` (an array of ids, so duplicate files collapse into one entry),
+and later starts skip it. The source world name is restored after the commit, and because this
+runs before seeding, an auto-imported world suppresses the built-in sample.
+
 ## Cascade deletion rules
 
 | Action             | Semantics                                                                                                         |
@@ -391,14 +439,15 @@ executes them without rollback, which is acceptable for tests.
 
 ## Cross-tab limitations
 
-v0.3 does **not** synchronise state between browser tabs:
+v0.4 does **not** synchronise state between browser tabs:
 
 - There is no `BroadcastChannel`, `SharedWorker`, or storage-event listener. Each tab holds its
   own Pinia state for the same world.
 - IndexedDB writes are transactional, so a write is never partially applied; however, each
   entity is written as a whole record, so two tabs editing the same entity are **last write
   wins**. A tab with stale state can overwrite fields another tab changed.
-- Autosave timers and the layout snapshot are per tab. Closing a tab with a pending < 400 ms write
+- Autosave timers, the layout snapshot, the drag history, and the large-graph expansion state are
+  per tab. Closing a tab with a pending < 400 ms write
   may lose the last keystrokes of that tab, and another tab cannot restore its layout.
 - Export reads the database, not the in-memory state, so exporting from tab B can miss tab A's
   unsaved debounce window.

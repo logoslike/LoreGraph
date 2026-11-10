@@ -75,10 +75,29 @@ All screenshots are captured at 1440×900.
 - **Adjacency highlighting and Focus Mode.** Selecting a node keeps it, its direct neighbours,
   and its relations sharp while everything else fades; selecting a relation keeps it and its two
   endpoints. Press `F` (or the toolbar button) to show only that node and its direct neighbours,
-  with a banner to leave it; `Esc` also leaves Focus Mode.
+  with a banner to leave it; `Esc` also leaves Focus Mode. `F` prefers the visible node under the
+  pointer over the selection, and while focused, hovering another visible node moves the centre.
+- **Focus that keeps its scale.** On a large graph, entering or moving Focus Mode keeps the
+  current zoom and centres the focus node; small graphs and leaving the mode still fit the
+  neighbourhood. Every visible neighbour whose card lies completely outside the canvas gets a
+  marker on the matching edge with a direction arrow and its name, refreshed as you pan, zoom, or
+  resize a panel. Clicking or activating a marker selects that node and centres it at the current
+  zoom without moving the focus centre.
+- **Drag undo.** `Ctrl/⌘+Z` steps back through the last 50 node drags, saving each restored
+  position through autosave. A drop that does not move the node is not recorded, the shortcut is
+  ignored while typing, while a dialog is open, and during a drag, and the history is cleared when
+  you switch worlds or run an automatic layout.
+- **Inspector sections.** Custom properties start collapsed and 所属关系 (relations) starts
+  expanded; each section toggles independently, and folding only hides content, so the rows and
+  any selected relation survive. Opening a relation from a node records the source node and shows
+  a 返回节点检查器 button that goes back.
+- **Root `worlds/` import.** `.loregraph.json` files placed in `worlds/` at the project root are
+  discovered when the world list starts and imported through the normal import pipeline. A
+  failing file is skipped on its own, and an already imported source `universe.id` never comes
+  back — not on reload, not from a duplicate file, and not after you delete the imported world.
 - **Keyboard shortcuts.** `N` creates a node, `F` enters or leaves Focus Mode,
   `Delete`/`Backspace` deletes the selection, `Esc` cancels or leaves Focus Mode,
-  `Ctrl/⌘+K` focuses search, `?` opens the shortcut help.
+  `Ctrl/⌘+Z` undoes the last node drag, `Ctrl/⌘+K` focuses search, `?` opens the shortcut help.
 - **Autosave.** Edits are applied to the UI immediately and flushed to IndexedDB after a short
   debounce; failed writes roll back to the last persisted state.
 - **Safe deletion.** Deleting a node removes its relations atomically and offers an undo toast.
@@ -134,6 +153,18 @@ npm install
 npm run dev          # dev server at http://127.0.0.1:5173
 ```
 
+### Root `worlds/` world files
+
+Drop `.loregraph.json` world files into `worlds/` at the project root and the world list imports
+them on start. Only the first level of `worlds/` is scanned, each file is validated and committed
+on its own, and a source `universe.id` is imported once: duplicate files, reloads, and deleting
+the imported world all stay quiet. Automatic imports keep the source world name rather than the
+file name.
+
+Production builds emit these JSON files as separate assets, so adding, replacing, or removing one
+needs a fresh `npm run build` and a redeploy; a browser that already ran an older build also keeps
+the earlier imports.
+
 Build and preview the production bundle:
 
 ```bash
@@ -149,8 +180,8 @@ npm run lint
 npm run test:unit
 ```
 
-The suite contains **320 unit tests across 34 files** (Vitest with jsdom and
-`fake-indexeddb`) and **79 end-to-end tests across 18 files** (Playwright, Chromium). Install
+The suite contains **428 unit tests across 44 files** (Vitest with jsdom and
+`fake-indexeddb`) and **104 end-to-end tests across 23 files** (Playwright, Chromium). Install
 the browser once and run the E2E suite:
 
 ```bash
@@ -176,7 +207,7 @@ src/
 ├─ repositories/    Persistence interfaces + memory and Dexie adapters
 ├─ services/        Business rules, import/export, layout, autosave
 ├─ stores/          Pinia stores (universe, types, graph, ui)
-├─ composables/     Theme, toast, shortcuts, viewport, folding, sidebar preferences
+├─ composables/     Theme, toast, shortcuts, viewport, expansion, folding, sidebar preferences
 ├─ components/      Vue components: common/, layout/, editor/, universe/, graph/
 ├─ views/           Route-level views
 ├─ router/          Routes: / (worlds), /u/:universeId (workspace)
@@ -185,13 +216,13 @@ src/
 
 Read [docs/architecture.md](docs/architecture.md) for the full design: autosave and undo
 semantics, the import pipeline, automatic layout, universe isolation, cascade deletion, and the
-cross-tab limitations of v0.3.
+cross-tab limitations of v0.4.
 
 ## Data and privacy
 
 - All data is stored in the browser's IndexedDB. Your worlds are never uploaded, and the app
-  makes no request to any third-party server. The only fetch is for the bundled sample world
-  file served from the app itself.
+  makes no request to any third-party server. The only fetches load assets the app itself serves:
+  the built-in sample world and the `worlds/*.json` files at the project root.
 - There is no account, no cloud sync, and no analytics.
 - Clearing site data (or using a private window) deletes your worlds. **Export regularly** if
   the data matters.
@@ -202,9 +233,14 @@ cross-tab limitations of v0.3.
 
 ## Roadmap
 
-**v0.3 (current)** — workspace refinement: a context header, a sidebar node library grouped by
-type with per-world collapse, node folding, separate lanes for parallel relations, clustered
-layout by type, and a global direction-arrow switch.
+**v0.4 (current)** — reading graphs at scale: on-demand relations on large graphs with a drag
+that no longer rebuilds the whole canvas, Focus Mode that keeps its zoom and marks off-screen
+neighbours, drag undo, collapsible inspector sections with a way back to the node, and automatic
+import of root `worlds/` files.
+
+**v0.3** — workspace refinement: a context header, a sidebar node library grouped by type with
+per-world collapse, node folding, separate lanes for parallel relations, clustered layout by type,
+and a global direction-arrow switch.
 
 **v0.2** — world descriptions, two-step JSON import with merge and graph snippets, automatic
 layout, and a viewport that survives panel and window resizes.

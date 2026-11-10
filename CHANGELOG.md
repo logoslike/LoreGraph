@@ -5,6 +5,54 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-10
+
+### Added
+
+- On-demand relations on large graphs: from 100 nodes or 300 relations the canvas keeps every node
+  card but starts with no relation lines. Clicking a node reveals all of its direct incoming and
+  outgoing relations, clicking a neighbour reveals the next layer, and the chevron on a node
+  toggles its relations. Expanding is view state, kept per world in `localStorage`; locating a node
+  from search or the sidebar expands only that node's own hop, and a relation selected in the
+  inspector expands its source hop so the edge becomes visible.
+- Drag undo: `Ctrl/⌘+Z` steps back through the last 50 node drags and saves each restored position
+  through autosave. Positions are only recorded when the drop actually moves the node; the
+  shortcut is ignored while a field is focused, a dialog is open, or a drag or layout is running,
+  and the history is cleared on world switch and after an automatic layout or a layout restore.
+- Hover-to-focus: `F` now also accepts the visible node under the pointer. The hovered node wins
+  over the selection; while focused, hovering another visible node moves the focus centre, and
+  hovering the centre or nothing leaves Focus Mode.
+- Off-screen indicators: while a large graph is focused, every visible neighbour whose card has no
+  intersection with the canvas gets a marker on the matching edge with a direction arrow and the
+  node name. Markers follow panning, zooming, and panel or window resizes and spread along each
+  edge so they do not stack at one point.
+- Clicking a marker selects that node and centres it at the current zoom without moving the focus
+  centre. Markers are buttons with an accessible label and work from the keyboard.
+- Inspector sections: custom properties start collapsed and 所属关系 (relations) starts expanded;
+  each section toggles independently, announces its state with `aria-expanded`, and folding only
+  hides content, so rows and any selected relation survive. Opening an edge from a node's
+  relations list records the source node and shows a 返回节点检查器 button that goes back.
+- Root `worlds/` auto-import: `worlds/*.json` in the project root is discovered when the universe
+  list starts, validated and imported through the normal import pipeline as a new world. Only the
+  first level matches, a failing file is skipped on its own, an already imported source
+  `universe.id` is never imported again (duplicate files, reloads, and deleting the world stay
+  quiet), and production builds emit the JSON as separate assets.
+
+### Changed
+
+- Focus Mode on a large graph keeps the current zoom and centres the focus node instead of fitting
+  the whole neighbourhood, so a distant neighbour no longer pulls the view out. Small graphs and
+  leaving Focus Mode still refit.
+- Selecting a relation that the current expansion hides clears the selection when it still cannot
+  be shown after expanding its source hop, instead of leaving an inspector for an invisible edge.
+
+### Fixed
+
+- Clicking empty canvas on a large graph left the relations revealed by the last clicked node on
+  screen; the click now withdraws them together with the selection.
+- Clicking a node that has no relation to the currently revealed chain left the previous relations
+  and highlighting in place; it now collapses the old expansion and clears the highlight.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added
