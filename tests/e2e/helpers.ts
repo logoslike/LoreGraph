@@ -96,7 +96,15 @@ export async function dragNodeBy(page: Page, name: string, dx: number, dy: numbe
   const startY = box.y + box.height / 2
   await page.mouse.move(startX, startY)
   await page.mouse.down()
-  await page.mouse.move(startX + dx, startY + dy, { steps: 12 })
+  // 第一段 pointermove 只用来启动拖拽、不计入位移：先走 8px 唤醒，再把指针送到
+  // 「唤醒点 + dx/dy」，实际位移才等于请求值。少这一步每拖一次就短 8px，
+  // 而画布开了 16px 网格吸附（GraphCanvas.vue 的 snap-to-grid），小修正会被吸回原格。
+  const warmX = startX + Math.sign(dx) * 8
+  const warmY = startY + Math.sign(dy) * 8
+  if (dx !== 0 || dy !== 0) {
+    await page.mouse.move(warmX, warmY, { steps: 1 })
+  }
+  await page.mouse.move(warmX + dx, warmY + dy, { steps: 12 })
   await page.mouse.up()
 }
 

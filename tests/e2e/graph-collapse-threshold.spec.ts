@@ -52,6 +52,25 @@ async function openWorld(page: Page, testInfo: TestInfo): Promise<WorldIds> {
   return resolveWorldIds(page)
 }
 
+/** 节点必须完整落在画布可视区内，否则点击会被两侧侧栏/检查器拦截。 */
+async function expectNodeInsideCanvas(page: Page, name: string): Promise<void> {
+  const canvas = await page.getByTestId('graph-canvas').boundingBox()
+  const box = await nodeByName(page, name).boundingBox()
+  expect(canvas, '画布不可见').not.toBeNull()
+  expect(box, `画布上找不到节点「${name}」`).not.toBeNull()
+  if (canvas === null || box === null) {
+    return
+  }
+  expect(box.x, `节点「${name}」左侧出界`).toBeGreaterThanOrEqual(canvas.x - 1)
+  expect(box.y, `节点「${name}」上方出界`).toBeGreaterThanOrEqual(canvas.y - 1)
+  expect(box.x + box.width, `节点「${name}」右侧出界`).toBeLessThanOrEqual(
+    canvas.x + canvas.width + 1,
+  )
+  expect(box.y + box.height, `节点「${name}」下方出界`).toBeLessThanOrEqual(
+    canvas.y + canvas.height + 1,
+  )
+}
+
 /** 通过画布查找定位并选中节点（大图模式会同时展开它的一跳关系）。 */
 async function locateNodeByName(page: Page, name: string): Promise<void> {
   await page.getByTestId('graph-search-btn').click()
@@ -91,6 +110,13 @@ test.describe('跨大图阈值的折叠清理', () => {
     await expect(page.getByTestId('lore-node')).toHaveCount(3)
 
     // 4) 选中邻居 Z 并删除：总节点回到 99，旧折叠重新生效把 Y 藏起来
+    // 大图聚焦保留进入前的缩放（步骤 3 的搜索定位把视口放大到 1.25），邻域两端的 X/Z
+    // 只剩一小条露在画布边缘、其余被两侧面板盖住，点击会被检查器拦截；屏外标注只标注
+    // 与画布完全不相交的节点，所以这里没有可点的标注。先用工具栏的「适应视图」把聚焦
+    // 邻域收进画布（用户可见的操作，不用 force click、也不靠放大超时），再点 Z。
+    await page.getByTestId('fit-view-btn').click()
+    await waitForViewportIdle(page)
+    await expectNodeInsideCanvas(page, Z)
     await nodeByName(page, Z).click()
     await page.keyboard.press('Delete')
     await expect(page.getByTestId('lore-node')).toHaveCount(COLLAPSE_NODE_COUNT - 1)

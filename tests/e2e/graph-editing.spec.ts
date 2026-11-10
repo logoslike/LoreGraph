@@ -37,7 +37,9 @@ async function moveNodeToScreenPoint(
   await expect(node).toBeVisible()
   // 等画布就绪（节点已注册拖拽、视口动画结束）再按坐标拖拽，避免拖动被丢弃
   await waitForViewportIdle(page)
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // 每轮先量后拖，最多拖 3 次；第 4 轮只量不拖——拖拽偶尔会整段丢失，
+  // 末次拖拽也可能已经把节点带到目标，不能再白扔一次机会就抛错。
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const box = await node.boundingBox()
     if (box === null) {
       throw new Error(`画布上找不到节点「${name}」`)
@@ -46,6 +48,9 @@ async function moveNodeToScreenPoint(
     const dy = target.y - (box.y + box.height / 2)
     if (Math.abs(dx) <= 20 && Math.abs(dy) <= 20) {
       return
+    }
+    if (attempt === 3) {
+      break
     }
     await dragNodeBy(page, name, dx, dy)
   }
